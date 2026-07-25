@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>องุ่นหวาน ✿ ぶどう - ระบบเช็คเครดิตลูกค้า</title>
     
     <!-- Google Fonts -->
@@ -199,7 +199,7 @@
         };
 
         // ==========================================
-        // 2. DATA FETCHING (SUPABASE)
+        // 2. DATA FETCHING (SUPABASE API)
         // ==========================================
         async function fetchInitialData() {
             appState.isLoading = true;
@@ -223,45 +223,32 @@
                     if(appState.view === 'admin') appState.view = 'login';
                 }
 
-                // โหลดข้อมูลร้าน
-                const { data: shopData, error: shopError } = await sb
-                    .from('shop_info')
-                    .select('*')
-                    .eq('id', 1)
-                    .single();
-                
-                if (shopError) throw shopError;
+                // โหลดข้อมูลร้าน (shop_info)
+                const { data: shopData, error: shopError } = await sb.from('shop_info').select('*').eq('id', 1).single();
+                if (shopError && shopError.code !== 'PGRST116') throw shopError; // PGRST116 = No rows found
                 
                 if (shopData) {
-                    appState.shopInfo.name = shopData.name;
-                    appState.shopInfo.description = shopData.description;
-                    appState.shopInfo.avatar = shopData.avatar_url || 'https://images.unsplash.com/photo-1578339572457-3f30907d8a67?w=300&q=80';
-                    appState.shopInfo.banner = shopData.banner_url || 'https://images.unsplash.com/photo-1618331835717-801e976710b2?w=800&q=80';
-                    appState.shopInfo.showBanner = shopData.show_banner;
+                    appState.shopInfo.name = shopData.name || 'องุ่นหวาน ✿ ぶどう';
+                    appState.shopInfo.description = shopData.description || '';
+                    appState.shopInfo.avatar = shopData.avatar_url || '';
+                    appState.shopInfo.banner = shopData.banner_url || '';
+                    appState.shopInfo.showBanner = shopData.show_banner ?? true;
                     appState.shopInfo.tags = shopData.tags || [];
                 }
 
-                // โหลดช่องทางติดต่อ
-                const { data: socialData, error: socialError } = await sb
-                    .from('shop_social_links')
-                    .select('*')
-                    .order('sort_order', { ascending: true });
-                
+                // โหลดช่องทางติดต่อ (social_links)
+                const { data: socialData, error: socialError } = await sb.from('social_links').select('*').order('created_at', { ascending: true });
                 if (socialError) throw socialError;
                 
                 appState.shopInfo.socialLinks = socialData ? socialData.map(s => ({
                     id: s.id,
-                    type: s.platform_type,
+                    type: s.type,
                     label: s.label,
                     url: s.url
                 })) : [];
 
-                // โหลดรีวิว
-                const { data: reviewsData, error: reviewsError } = await sb
-                    .from('reviews')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-                
+                // โหลดรีวิวทั้งหมด (reviews)
+                const { data: reviewsData, error: reviewsError } = await sb.from('reviews').select('*').order('created_at', { ascending: false });
                 if (reviewsError) throw reviewsError;
                 
                 appState.reviews = (reviewsData || []).map(r => ({
@@ -271,19 +258,19 @@
                     contactLink: r.contact_link,
                     rating: r.rating,
                     text: r.review_text,
-                    image: r.image_url,
+                    image: r.review_image_url,
                     date: formatDateThai(r.created_at),
                     reply: r.reply_text ? {
                         text: r.reply_text,
                         image: r.reply_image_url,
-                        date: r.replied_at ? formatDateThai(r.replied_at) : ''
+                        date: r.reply_date ? formatDateThai(r.reply_date) : ''
                     } : null,
                     isHidden: r.is_hidden
                 }));
 
             } catch (error) {
                 console.error("Error fetching data:", error);
-                appState.errorMsg = "ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่อีกครั้ง";
+                appState.errorMsg = "ไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ กรุณาลองใหม่อีกครั้ง";
             } finally {
                 appState.isLoading = false;
                 renderApp();
@@ -314,15 +301,9 @@
                     let height = img.height;
 
                     if (width > height) {
-                        if (width > MAX_WIDTH) {
-                            height *= MAX_WIDTH / width;
-                            width = MAX_WIDTH;
-                        }
+                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
                     } else {
-                        if (height > MAX_HEIGHT) {
-                            width *= MAX_HEIGHT / height;
-                            height = MAX_HEIGHT;
-                        }
+                        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
                     }
                     canvas.width = width;
                     canvas.height = height;
@@ -450,15 +431,15 @@
             let html = '';
 
             html += `
-                <div class="sticky top-0 z-40 bg-white/60 backdrop-blur-md w-full border-b border-white/50 shadow-sm">
-                    <div class="max-w-2xl mx-auto w-full px-4 py-3 flex items-center justify-between">
-                        <div class="flex items-center gap-2.5">
+                <div class="sticky top-0 z-40 bg-white/60 backdrop-blur-md w-full border-b border-white/50 shadow-sm" style="padding-top: max(env(safe-area-inset-top), 12px);">
+                    <div class="max-w-2xl mx-auto w-full px-4 pb-3 flex items-center justify-between">
+                        <div class="flex items-center gap-2.5 mt-1">
                             <div class="p-2 bg-white/90 rounded-full shadow-sm text-purple-500">
                                 <i data-lucide="store" width="18" height="18"></i>
                             </div>
                             <span class="text-sm font-bold text-purple-800 tracking-wide">${escapeHTML(appState.shopInfo.name)}</span>
                         </div>
-                        <div class="flex gap-2">
+                        <div class="flex gap-2 mt-1">
                             <button onclick="toggleView()" class="p-2 bg-white/90 rounded-full shadow-sm text-gray-400 hover:text-purple-500 hover:scale-105 transition-all">
                                 <i data-lucide="${appState.view === 'customer' ? 'settings' : 'home'}" width="18" height="18"></i>
                             </button>
@@ -476,8 +457,6 @@
             
             if (appState.isLoading) {
                 html += renderLoading();
-            } else if (appState.errorMsg && appState.view !== 'login') {
-                html += renderError();
             } else {
                 if (appState.view === 'customer') {
                     html += renderCustomerView();
@@ -820,13 +799,12 @@
                             <textarea oninput="debouncedUpdateShopInfo('description', this.value)" class="w-full px-4 py-3 sm:py-4 bg-white/70 border border-gray-200 rounded-2xl h-28 sm:h-32 resize-none focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm sm:text-base leading-relaxed" ${appState.isSaving ? 'disabled' : ''}>${escapeHTML(shopInfo.description)}</textarea>
                         </div>
                         
-                        <!-- ช่องทางการติดต่อ -->
                         <div class="pt-2">
                             <label class="block text-xs sm:text-sm font-semibold text-gray-600 mb-3 ml-1">ช่องทางการติดต่อ (สำหรับหน้าเว็บ)</label>
                             <div class="space-y-3 mb-4" id="socialLinksContainer">
                                 ${(shopInfo.socialLinks || []).map(link => `
                                     <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-white/40 p-2 rounded-2xl border border-white">
-                                        <select onchange="updateSocialLink('${link.id}', 'platform_type', this.value)" class="bg-white/70 border border-gray-200 rounded-xl p-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[100px] cursor-pointer" ${appState.isSaving ? 'disabled' : ''}>
+                                        <select onchange="updateSocialLink('${link.id}', 'type', this.value)" class="bg-white/70 border border-gray-200 rounded-xl p-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[100px] cursor-pointer" ${appState.isSaving ? 'disabled' : ''}>
                                             <option value="facebook" ${link.type=='facebook'?'selected':''}>Facebook</option>
                                             <option value="instagram" ${link.type=='instagram'?'selected':''}>Instagram</option>
                                             <option value="message-circle" ${link.type=='message-circle'?'selected':''}>Line/Chat</option>
@@ -886,7 +864,6 @@
             return html;
         }
 
-
         // ==========================================
         // 5. ACTIONS & HANDLERS
         // ==========================================
@@ -921,7 +898,7 @@
                 appState.view = 'customer';
             }
             appState.errorMsg = '';
-            appState.isSaving = false; // Reset saving state
+            appState.isSaving = false; 
             renderApp();
         }
 
@@ -934,18 +911,17 @@
             
             appState.isSaving = true;
             appState.errorMsg = '';
-            renderApp(); // To show loading state on button
+            renderApp(); 
 
             try {
                 const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
                 if (error) throw error;
                 
-                // ตรวจสิทธิ์แอดมินหลังล็อคอินสำเร็จ
                 const { data: isAdmin, error: rpcError } = await sb.rpc('is_admin');
                 if (isAdmin === true) {
                     appState.isAdmin = true;
                     appState.view = 'admin';
-                    appState.isSaving = false; // Reset before fetching data
+                    appState.isSaving = false; 
                     await fetchInitialData(); 
                 } else {
                     await sb.auth.signOut();
@@ -962,9 +938,9 @@
             await sb.auth.signOut();
             appState.isAdmin = false;
             appState.view = 'customer';
-            appState.isSaving = false; // Reset state
-            appState.errorMsg = '';    // Clear error
-            await fetchInitialData(); // โหลดใหม่แบบ public
+            appState.isSaving = false;
+            appState.errorMsg = '';
+            await fetchInitialData(); 
         }
 
         function setAdminTab(tab) {
@@ -972,7 +948,6 @@
             renderApp();
         }
 
-        // --- Database Mutation Functions (Admin) ---
         let saveTimeout;
         function debouncedUpdateShopInfo(key, value) {
             appState.shopInfo[key] = value;
@@ -987,14 +962,15 @@
             
             try {
                 const info = appState.shopInfo;
-                const { error } = await sb.from('shop_info').update({
+                const { error } = await sb.from('shop_info').upsert({
+                    id: 1, 
                     name: info.name,
                     description: info.description,
                     avatar_url: info.avatar,
                     banner_url: info.banner,
                     show_banner: info.showBanner,
                     tags: info.tags
-                }).eq('id', 1);
+                });
                 if (error) throw error;
             } catch (error) {
                 alert("เกิดข้อผิดพลาดในการบันทึกข้อมูลร้าน: " + error.message);
@@ -1049,14 +1025,13 @@
             renderApp();
             
             try {
-                const newLink = { platform_type: 'link', label: 'Website', url: '', sort_order: appState.shopInfo.socialLinks.length };
-                const { data, error } = await sb.from('shop_social_links').insert([newLink]).select().single();
-                
+                const newLink = { type: 'link', label: 'Website', url: '' };
+                const { data, error } = await sb.from('social_links').insert([newLink]).select().single();
                 if (error) throw error;
                 
                 appState.shopInfo.socialLinks.push({
                     id: data.id,
-                    type: data.platform_type,
+                    type: data.type,
                     label: data.label,
                     url: data.url
                 });
@@ -1068,21 +1043,23 @@
             }
         };
 
+        window.updateSocialLinkType = function(id, value) {
+            updateSocialLink(id, 'type', value);
+        };
+
         window.updateSocialLink = async function(id, field, value) {
             if(!appState.isAdmin) return;
             const link = appState.shopInfo.socialLinks.find(l => l.id === id);
             if(link) {
-                if(field === 'platform_type') link.type = value;
-                else link[field] = value;
+                link[field] = value;
                 
                 appState.isSaving = true;
                 renderApp();
                 try {
                     const updateData = {};
-                    if(field === 'platform_type') updateData.platform_type = value;
-                    else updateData[field] = value;
+                    updateData[field] = value;
                     
-                    const { error } = await sb.from('shop_social_links').update(updateData).eq('id', id);
+                    const { error } = await sb.from('social_links').update(updateData).eq('id', id);
                     if(error) throw error;
                 } catch (e) {
                     alert("อัปเดตช่องทางไม่สำเร็จ: " + e.message);
@@ -1099,7 +1076,7 @@
                 appState.isSaving = true;
                 renderApp();
                 try {
-                    const { error } = await sb.from('shop_social_links').delete().eq('id', id);
+                    const { error } = await sb.from('social_links').delete().eq('id', id);
                     if(error) throw error;
                     
                     appState.shopInfo.socialLinks = appState.shopInfo.socialLinks.filter(l => l.id !== id);
@@ -1160,7 +1137,6 @@
                 }
             }
         }
-
 
         // ==========================================
         // 6. MODALS (Customer Review & Admin Reply)
@@ -1239,7 +1215,7 @@
             if(!text.trim()) return alert('กรุณาพิมพ์ข้อความรีวิวค่ะ');
 
             appState.isSaving = true;
-            renderReviewModalHTML(false); // Update modal UI to show loading on button
+            renderReviewModalHTML(false); 
 
             try {
                 const insertData = {
@@ -1248,7 +1224,7 @@
                     contact_link: contactLink,
                     rating: currentModalState.rating,
                     review_text: text,
-                    image_url: currentModalState.image,
+                    review_image_url: currentModalState.image,
                 };
 
                 const { data, error } = await sb.from('reviews').insert([insertData]).select().single();
@@ -1261,7 +1237,7 @@
                     contactLink: data.contact_link,
                     rating: data.rating,
                     text: data.review_text,
-                    image: data.image_url,
+                    image: data.review_image_url,
                     date: formatDateThai(data.created_at),
                     reply: null,
                     isHidden: false
@@ -1365,17 +1341,17 @@
             
             if (reviewIndex > -1) {
                 appState.isSaving = true;
-                renderReplyModalHTML(); // Show loading on btn
+                renderReplyModalHTML(); 
                 
                 try {
                     let updateData = {};
                     if (!text.trim() && !currentModalState.image) {
-                        updateData = { reply_text: null, reply_image_url: null, replied_at: null };
+                        updateData = { reply_text: null, reply_image_url: null, reply_date: null };
                     } else {
                         updateData = { 
                             reply_text: text, 
                             reply_image_url: currentModalState.image, 
-                            replied_at: new Date().toISOString() 
+                            reply_date: new Date().toISOString() 
                         };
                     }
                     
@@ -1388,7 +1364,7 @@
                         appState.reviews[reviewIndex].reply = {
                             text: text,
                             image: currentModalState.image,
-                            date: formatDateThai(updateData.replied_at)
+                            date: formatDateThai(updateData.reply_date)
                         };
                     }
                     closeModals();
@@ -1451,7 +1427,7 @@
         // 7. INITIALIZATION
         // ==========================================
         window.onload = function() {
-            fetchInitialData(); // Start fetching data on load
+            fetchInitialData(); 
         };
     </script>
 </body>
