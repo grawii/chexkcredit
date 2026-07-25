@@ -70,7 +70,7 @@
             background: linear-gradient(135deg, #F3E5F5 0%, #E8EAF6 100%);
         }
 
-        /* รองรับรอยบาก/ขอบกล้องมือถือ ป้องกันแถบเมนูด้านบนชิดขอบจอ */
+        /* รองรับรอยบาก/ขอบกล้องมือถือ */
         .safe-padding-top {
             padding-top: env(safe-area-inset-top, 12px);
         }
@@ -78,6 +78,24 @@
             .safe-padding-top {
                 padding-top: max(env(safe-area-inset-top), 12px);
             }
+        }
+
+        /* อนิเมชันแถบข้อความเลื่อน (Marquee) */
+        .marquee-wrapper {
+            overflow: hidden;
+            white-space: nowrap;
+            box-sizing: border-box;
+            width: 100%;
+            position: relative;
+        }
+        .marquee-text {
+            display: inline-block;
+            padding-left: 100%;
+            animation: marquee 15s linear infinite;
+        }
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-100%); }
         }
 
         @keyframes float-pulse {
@@ -201,6 +219,7 @@
                 avatar: "",
                 banner: "",
                 showBanner: true,
+                marqueeText: "",
                 tags: [],
                 socialLinks: []
             },
@@ -208,7 +227,7 @@
         };
 
         // ==========================================
-        // 2. DATA FETCHING
+        // 2. DATA FETCHING (SUPABASE API)
         // ==========================================
         async function fetchInitialData() {
             appState.isLoading = true;
@@ -240,6 +259,7 @@
                     appState.shopInfo.avatar = shopData.avatar_url || '';
                     appState.shopInfo.banner = shopData.banner_url || '';
                     appState.shopInfo.showBanner = shopData.show_banner ?? true;
+                    appState.shopInfo.marqueeText = shopData.marquee_text || 'ยินดีต้อนรับสู่ร้านองุ่นหวาน ✿ ぶどう สนใจสั่งซื้อสินค้าสามารถทักแชทได้เลยค่ะ';
                     appState.shopInfo.tags = shopData.tags || [];
                 }
 
@@ -264,6 +284,7 @@
                     rating: r.rating,
                     text: r.review_text,
                     image: r.review_image_url,
+                    isAdminPost: r.is_admin_post || false,
                     date: formatDateThai(r.created_at),
                     reply: r.reply_text ? {
                         text: r.reply_text,
@@ -542,6 +563,19 @@
                     ` : ''}
 
                     <div class="px-4 mt-10">
+                        
+                        <!-- แถบเลื่อนข้อความประกาศ (Marquee) -->
+                        <div class="w-full bg-white/60 backdrop-blur-md rounded-full px-4 py-2 border border-purple-100 shadow-sm flex items-center gap-3 mb-6">
+                            <div class="bg-purple-100 p-1.5 rounded-full shrink-0 text-purple-500 shadow-sm">
+                                <i data-lucide="megaphone" width="16" height="16"></i>
+                            </div>
+                            <div class="marquee-wrapper flex-1">
+                                <div class="marquee-text text-xs sm:text-sm text-purple-700 font-medium tracking-wide">
+                                    ${escapeHTML(shopInfo.marqueeText || 'ยินดีต้อนรับสู่ร้านองุ่นหวาน ✿ ぶどう สนใจสั่งซื้อสินค้าสามารถทักแชทได้เลยค่ะ')}
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="flex items-center gap-2 mb-4 pl-2 text-purple-600/70 text-xs sm:text-sm font-bold tracking-widest uppercase">
                             <div class="w-1.5 h-4 sm:h-5 bg-purple-400 rounded-full"></div>
                             Customer Credit
@@ -602,8 +636,13 @@
                     
                     <div class="flex justify-between items-start mb-3">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100/80 text-purple-500 rounded-full flex items-center justify-center font-bold text-lg sm:text-xl border border-white shadow-inner shrink-0 uppercase">
+                            <div class="relative w-10 h-10 sm:w-12 sm:h-12 bg-purple-100/80 text-purple-500 rounded-full flex items-center justify-center font-bold text-lg sm:text-xl border border-white shadow-inner shrink-0 uppercase">
                                 ${escapeHTML(displayAuthor.charAt(0))}
+                                ${review.isAdminPost ? `
+                                <div class="absolute -bottom-1 -right-1 bg-yellow-400 rounded-full p-[3px] border border-white shadow-sm flex items-center justify-center text-white">
+                                    <i data-lucide="crown" width="10" height="10"></i>
+                                </div>
+                                ` : ''}
                             </div>
                             <div>
                                 <div class="font-medium text-gray-700 text-sm sm:text-base flex items-center gap-2">
@@ -654,7 +693,12 @@
                             </div>
                             <div class="flex justify-between items-start mb-1.5">
                                 <div class="font-semibold text-pink-500 text-xs sm:text-sm flex items-center gap-1.5">
-                                    <span class="w-4 h-4 bg-pink-200 text-pink-600 rounded-full flex items-center justify-center text-[8px]">✿</span>
+                                    <div class="relative">
+                                        <span class="w-5 h-5 bg-pink-200 text-pink-600 rounded-full flex items-center justify-center text-[10px]">✿</span>
+                                        <div class="absolute -bottom-1 -right-1 bg-yellow-400 rounded-full p-[2px] border border-white shadow-sm flex items-center justify-center text-white">
+                                            <i data-lucide="crown" width="8" height="8"></i>
+                                        </div>
+                                    </div>
                                     Admin Reply
                                 </div>
                                 ${isAdmin ? `<button onclick="openReplyModal('${review.id}')" class="text-[10px] sm:text-xs text-gray-400 underline hover:text-pink-500">แก้ไข</button>` : ''}
@@ -747,9 +791,9 @@
                             <label class="block text-xs sm:text-sm font-semibold text-gray-600 mb-2 ml-1">รูปโปรไฟล์</label>
                             <div class="flex items-center gap-4">
                                 <img src="${escapeHTML(shopInfo.avatar)}" class="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-white shadow-md" id="previewAdminAvatar" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlMmQ0ZjAiLz48L3N2Zz4='"/>
-                                <label class="px-4 py-2 sm:py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 ${appState.isSaving ? 'disabled-btn' : ''}">
+                                <label class="px-4 py-2 sm:py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100">
                                     เปลี่ยนรูป
-                                    <input type="file" class="hidden" accept="image/*" onchange="handleAdminImageUpload(event, 'avatar')" ${appState.isSaving ? 'disabled' : ''} />
+                                    <input type="file" class="hidden" accept="image/*" onchange="handleAdminImageUpload(event, 'avatar')" />
                                 </label>
                             </div>
                         </div>
@@ -757,19 +801,24 @@
                         <div>
                             <div class="flex justify-between items-center mb-2">
                                 <label class="block text-xs sm:text-sm font-semibold text-gray-600 ml-1">รูปแบนเนอร์</label>
-                                <label class="relative inline-flex items-center cursor-pointer ${appState.isSaving ? 'disabled-btn' : ''}">
-                                    <input type="checkbox" class="sr-only peer" ${shopInfo.showBanner ? 'checked' : ''} onchange="toggleBannerDisplay(this.checked)" ${appState.isSaving ? 'disabled' : ''}>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" class="sr-only peer" ${shopInfo.showBanner ? 'checked' : ''} onchange="toggleBannerDisplay(this.checked)">
                                     <div class="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
                                     <span class="ml-2 text-xs sm:text-sm font-medium text-gray-500">${shopInfo.showBanner ? 'แสดงหน้าร้าน' : 'ซ่อน'}</span>
                                 </label>
                             </div>
                             <div class="space-y-3 transition-all ${!shopInfo.showBanner ? 'opacity-50 grayscale' : ''}">
                                 <img src="${escapeHTML(shopInfo.banner)}" class="w-full h-24 sm:h-32 rounded-2xl object-cover border-2 border-white shadow-sm" id="previewAdminBanner" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlMmQ0ZjAiLz48L3N2Zz4='"/>
-                                <label class="inline-block px-4 py-2 sm:py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 ${(!shopInfo.showBanner || appState.isSaving) ? 'disabled-btn' : ''}">
+                                <label class="inline-block px-4 py-2 sm:py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 ${!shopInfo.showBanner ? 'disabled-btn' : ''}">
                                     เปลี่ยนแบนเนอร์
-                                    <input type="file" class="hidden" accept="image/*" onchange="handleAdminImageUpload(event, 'banner')" ${(!shopInfo.showBanner || appState.isSaving) ? 'disabled' : ''} />
+                                    <input type="file" class="hidden" accept="image/*" onchange="handleAdminImageUpload(event, 'banner')" ${!shopInfo.showBanner ? 'disabled' : ''} />
                                 </label>
                             </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs sm:text-sm font-semibold text-gray-600 mb-2 ml-1">ข้อความประกาศ (แถบเลื่อน)</label>
+                            <input type="text" value="${escapeHTML(shopInfo.marqueeText)}" oninput="debouncedUpdateShopInfo('marqueeText', this.value)" class="w-full px-4 py-3 sm:py-4 bg-white/70 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm sm:text-base font-medium" />
                         </div>
 
                         <div class="pt-2">
@@ -780,15 +829,15 @@
                             <div class="space-y-2 mb-3">
                                 ${currentTags.map((tag, idx) => `
                                     <div class="flex items-center gap-2">
-                                        <input type="text" value="${escapeHTML(tag)}" onchange="updateTag(${idx}, this.value)" placeholder="ข้อความแท็ก..." class="flex-1 px-3.5 py-2.5 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 font-medium" ${appState.isSaving ? 'disabled' : ''}>
-                                        <button onclick="deleteTag(${idx})" class="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0 ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
+                                        <input type="text" value="${escapeHTML(tag)}" oninput="updateTag(${idx}, this.value)" placeholder="ข้อความแท็ก..." class="flex-1 px-3.5 py-2.5 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 font-medium">
+                                        <button onclick="deleteTag(${idx})" class="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0">
                                             <i data-lucide="trash-2" width="16" height="16"></i>
                                         </button>
                                     </div>
                                 `).join('')}
                             </div>
                             ${currentTags.length < 3 ? `
-                                <button onclick="addTag()" class="px-4 py-2 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 flex items-center gap-1.5 w-full sm:w-auto justify-center ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
+                                <button onclick="addTag()" class="px-4 py-2 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 flex items-center gap-1.5 w-full sm:w-auto justify-center">
                                     <i data-lucide="plus" width="14" height="14"></i> เพิ่มแท็ก
                                 </button>
                             ` : `
@@ -798,12 +847,12 @@
 
                         <div>
                             <label class="block text-xs sm:text-sm font-semibold text-gray-600 mb-2 ml-1">ชื่อร้าน</label>
-                            <input type="text" value="${escapeHTML(shopInfo.name)}" oninput="debouncedUpdateShopInfo('name', this.value)" class="w-full px-4 py-3 sm:py-4 bg-white/70 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm sm:text-base font-medium" ${appState.isSaving ? 'disabled' : ''}/>
+                            <input type="text" value="${escapeHTML(shopInfo.name)}" oninput="debouncedUpdateShopInfo('name', this.value)" class="w-full px-4 py-3 sm:py-4 bg-white/70 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm sm:text-base font-medium" />
                         </div>
                         
                         <div>
                             <label class="block text-xs sm:text-sm font-semibold text-gray-600 mb-2 ml-1">รายละเอียดร้าน</label>
-                            <textarea oninput="debouncedUpdateShopInfo('description', this.value)" class="w-full px-4 py-3 sm:py-4 bg-white/70 border border-gray-200 rounded-2xl h-28 sm:h-32 resize-none focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm sm:text-base leading-relaxed" ${appState.isSaving ? 'disabled' : ''}>${escapeHTML(shopInfo.description)}</textarea>
+                            <textarea oninput="debouncedUpdateShopInfo('description', this.value)" class="w-full px-4 py-3 sm:py-4 bg-white/70 border border-gray-200 rounded-2xl h-28 sm:h-32 resize-none focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm sm:text-base leading-relaxed">${escapeHTML(shopInfo.description)}</textarea>
                         </div>
                         
                         <div class="pt-2">
@@ -811,7 +860,7 @@
                             <div class="space-y-3 mb-4" id="socialLinksContainer">
                                 ${(shopInfo.socialLinks || []).map(link => `
                                     <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-white/40 p-2 rounded-2xl border border-white">
-                                        <select onchange="updateSocialLink('${link.id}', 'type', this.value)" class="bg-white/70 border border-gray-200 rounded-xl p-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[100px] cursor-pointer" ${appState.isSaving ? 'disabled' : ''}>
+                                        <select onchange="updateSocialLinkType('${link.id}', this.value)" class="bg-white/70 border border-gray-200 rounded-xl p-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[100px] cursor-pointer">
                                             <option value="facebook" ${link.type=='facebook'?'selected':''}>Facebook</option>
                                             <option value="instagram" ${link.type=='instagram'?'selected':''}>Instagram</option>
                                             <option value="message-circle" ${link.type=='message-circle'?'selected':''}>Line/Chat</option>
@@ -819,22 +868,22 @@
                                             <option value="youtube" ${link.type=='youtube'?'selected':''}>YouTube</option>
                                             <option value="link" ${link.type=='link'?'selected':''}>Other</option>
                                         </select>
-                                        <input type="text" placeholder="ชื่อปุ่ม" value="${escapeHTML(link.label)}" onchange="updateSocialLink('${link.id}', 'label', this.value)" class="flex-[1] px-3 py-2 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[100px]" ${appState.isSaving ? 'disabled' : ''}>
-                                        <input type="text" placeholder="URL ลิ้งค์..." value="${escapeHTML(link.url)}" onchange="updateSocialLink('${link.id}', 'url', this.value)" class="flex-[2] px-3 py-2 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[150px]" ${appState.isSaving ? 'disabled' : ''}>
-                                        <button onclick="deleteSocialLink('${link.id}')" class="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0 ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
+                                        <input type="text" placeholder="ชื่อปุ่ม" value="${escapeHTML(link.label)}" oninput="updateSocialLink('${link.id}', 'label', this.value)" class="flex-[1] px-3 py-2 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[100px]">
+                                        <input type="text" placeholder="URL ลิ้งค์..." value="${escapeHTML(link.url)}" oninput="updateSocialLink('${link.id}', 'url', this.value)" class="flex-[2] px-3 py-2 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[150px]">
+                                        <button onclick="deleteSocialLink('${link.id}')" class="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0">
                                             <i data-lucide="trash-2" width="16" height="16"></i>
                                         </button>
                                     </div>
                                 `).join('')}
                             </div>
-                            <button onclick="addSocialLink()" class="px-4 py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 flex items-center gap-1.5 w-full sm:w-auto justify-center ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
+                            <button onclick="addSocialLink()" class="px-4 py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 flex items-center gap-1.5 w-full sm:w-auto justify-center">
                                 <i data-lucide="plus" width="14" height="14"></i> เพิ่มช่องทางติดต่อ
                             </button>
                         </div>
 
                         <div class="pt-4 text-center border-t border-gray-100">
-                            <span class="inline-flex items-center gap-1 text-xs sm:text-sm text-emerald-600 bg-emerald-50 px-4 py-2 rounded-full font-medium border border-emerald-100 shadow-sm transition-opacity ${appState.isSaving ? 'opacity-50' : 'opacity-100'}">
-                                ${appState.isSaving ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังบันทึก...' : '<i data-lucide="check-circle-2" class="w-4 h-4"></i> ข้อมูลบันทึกอัตโนมัติเรียบร้อย'}
+                            <span id="save-status-indicator" class="inline-flex items-center gap-1 text-xs sm:text-sm text-emerald-600 bg-emerald-50 px-4 py-2 rounded-full font-medium border border-emerald-100 shadow-sm transition-all duration-300">
+                                <i data-lucide="check-circle-2" class="w-4 h-4"></i> ข้อมูลบันทึกอัตโนมัติเรียบร้อย
                             </span>
                         </div>
                     </div>
@@ -874,6 +923,22 @@
         // ==========================================
         // 5. ACTIONS & HANDLERS
         // ==========================================
+        window.setSaveStatusUI = function(saving) {
+            appState.isSaving = saving;
+            const el = document.getElementById('save-status-indicator');
+            if (el) {
+                if (saving) {
+                    el.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังบันทึก...';
+                    el.classList.add('opacity-50', 'text-purple-600', 'bg-purple-50', 'border-purple-100');
+                    el.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-100');
+                } else {
+                    el.innerHTML = '<i data-lucide="check-circle-2" class="w-4 h-4"></i> ข้อมูลบันทึกอัตโนมัติเรียบร้อย';
+                    el.classList.remove('opacity-50', 'text-purple-600', 'bg-purple-50', 'border-purple-100');
+                    el.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-100');
+                }
+                lucide.createIcons();
+            }
+        }
 
         function setReviewFilter(filter, viewType) {
             if (viewType === 'customer') {
@@ -958,15 +1023,13 @@
         let saveTimeout;
         function debouncedUpdateShopInfo(key, value) {
             appState.shopInfo[key] = value;
+            setSaveStatusUI(true);
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(saveShopInfoToDB, 1000);
         }
 
         async function saveShopInfoToDB() {
             if(!appState.isAdmin) return;
-            appState.isSaving = true;
-            renderApp();
-            
             try {
                 const info = appState.shopInfo;
                 const { error } = await sb.from('shop_info').upsert({
@@ -976,30 +1039,31 @@
                     avatar_url: info.avatar,
                     banner_url: info.banner,
                     show_banner: info.showBanner,
+                    marquee_text: info.marqueeText,
                     tags: info.tags
                 });
                 if (error) throw error;
             } catch (error) {
-                alert("เกิดข้อผิดพลาดในการบันทึกข้อมูลร้าน: " + error.message);
+                console.error("เกิดข้อผิดพลาดในการบันทึกข้อมูลร้าน: " + error.message);
             } finally {
-                appState.isSaving = false;
-                renderApp();
+                setSaveStatusUI(false);
             }
         }
 
         window.toggleBannerDisplay = function(isChecked) {
             appState.shopInfo.showBanner = isChecked;
-            saveShopInfoToDB();
+            setSaveStatusUI(true);
+            saveShopInfoToDB().then(() => renderApp());
         }
 
         window.handleAdminImageUpload = function(event, key) {
             const file = event.target.files[0];
             if (file) {
-                appState.isSaving = true;
+                setSaveStatusUI(true);
                 renderApp();
                 compressImage(file, (dataUrl) => {
                     appState.shopInfo[key] = dataUrl;
-                    saveShopInfoToDB();
+                    saveShopInfoToDB().then(() => renderApp());
                 });
             }
         }
@@ -1008,6 +1072,7 @@
             if (!appState.shopInfo.tags) appState.shopInfo.tags = [];
             if (appState.shopInfo.tags.length < 3) {
                 appState.shopInfo.tags.push("แท็กใหม่");
+                renderApp();
                 saveShopInfoToDB();
             }
         };
@@ -1015,22 +1080,23 @@
         window.updateTag = function(index, value) {
             if (appState.shopInfo.tags && appState.shopInfo.tags[index] !== undefined) {
                 appState.shopInfo.tags[index] = value;
-                saveShopInfoToDB();
+                setSaveStatusUI(true);
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(saveShopInfoToDB, 1000);
             }
         };
 
         window.deleteTag = function(index) {
             if (appState.shopInfo.tags) {
                 appState.shopInfo.tags.splice(index, 1);
+                renderApp();
                 saveShopInfoToDB();
             }
         };
 
         window.addSocialLink = async function() {
             if(!appState.isAdmin || appState.isSaving) return;
-            appState.isSaving = true;
-            renderApp();
-            
+            setSaveStatusUI(true);
             try {
                 const newLink = { type: 'link', label: 'Website', url: '' };
                 const { data, error } = await sb.from('social_links').insert([newLink]).select().single();
@@ -1042,56 +1108,60 @@
                     label: data.label,
                     url: data.url
                 });
+                renderApp();
             } catch (e) {
                 alert("เพิ่มช่องทางไม่สำเร็จ: " + e.message);
             } finally {
-                appState.isSaving = false;
-                renderApp();
+                setSaveStatusUI(false);
             }
         };
 
         window.updateSocialLinkType = function(id, value) {
-            updateSocialLink(id, 'type', value);
+            const link = appState.shopInfo.socialLinks.find(l => l.id === id);
+            if(link) {
+                link.type = value;
+                renderApp();
+                updateSocialLinkToDB(id, 'type', value);
+            }
         };
 
-        window.updateSocialLink = async function(id, field, value) {
+        window.updateSocialLink = function(id, field, value) {
             if(!appState.isAdmin) return;
             const link = appState.shopInfo.socialLinks.find(l => l.id === id);
             if(link) {
                 link[field] = value;
-                
-                appState.isSaving = true;
-                renderApp();
-                try {
-                    const updateData = {};
-                    updateData[field] = value;
-                    
-                    const { error } = await sb.from('social_links').update(updateData).eq('id', id);
-                    if(error) throw error;
-                } catch (e) {
-                    alert("อัปเดตช่องทางไม่สำเร็จ: " + e.message);
-                } finally {
-                    appState.isSaving = false;
-                    renderApp();
-                }
+                updateSocialLinkToDB(id, field, value);
             }
         };
+        
+        async function updateSocialLinkToDB(id, field, value) {
+            setSaveStatusUI(true);
+            try {
+                const updateData = {};
+                updateData[field] = value;
+                const { error } = await sb.from('social_links').update(updateData).eq('id', id);
+                if(error) throw error;
+            } catch (e) {
+                console.error("อัปเดตช่องทางไม่สำเร็จ: " + e.message);
+            } finally {
+                setSaveStatusUI(false);
+            }
+        }
 
         window.deleteSocialLink = async function(id) {
             if(!appState.isAdmin || appState.isSaving) return;
             if(confirm('ต้องการลบช่องทางการติดต่อนี้หรือไม่?')) {
-                appState.isSaving = true;
-                renderApp();
+                setSaveStatusUI(true);
                 try {
                     const { error } = await sb.from('social_links').delete().eq('id', id);
                     if(error) throw error;
                     
                     appState.shopInfo.socialLinks = appState.shopInfo.socialLinks.filter(l => l.id !== id);
+                    renderApp();
                 } catch(e) {
                     alert("ลบข้อมูลไม่สำเร็จ: " + e.message);
                 } finally {
-                    appState.isSaving = false;
-                    renderApp();
+                    setSaveStatusUI(false);
                 }
             }
         };
@@ -1099,8 +1169,6 @@
         window.toggleHideReview = async function(id, currentHiddenStatus) {
             if(!appState.isAdmin || appState.isSaving) return;
             appState.isSaving = true;
-            renderApp();
-            
             try {
                 const newStatus = !currentHiddenStatus;
                 const { error } = await sb.from('reviews').update({ is_hidden: newStatus }).eq('id', id);
@@ -1108,11 +1176,11 @@
                 
                 const review = appState.reviews.find(r => r.id === id);
                 if(review) review.isHidden = newStatus;
+                renderApp();
             } catch(e) {
                 alert("เปลี่ยนสถานะไม่สำเร็จ: " + e.message);
             } finally {
                 appState.isSaving = false;
-                renderApp();
             }
         }
 
@@ -1120,7 +1188,6 @@
             if(!appState.isAdmin || appState.isSaving) return;
             if(confirm('คุณแน่ใจหรือไม่ที่จะลบรีวิวนี้? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
                 appState.isSaving = true;
-                renderApp();
                 
                 try {
                     const { error } = await sb.from('reviews').delete().eq('id', id);
@@ -1136,11 +1203,11 @@
                     if (appState.adminPage > totalPages && totalPages > 0) {
                         appState.adminPage = totalPages;
                     }
+                    renderApp();
                 } catch(e) {
                     alert("ลบรีวิวไม่สำเร็จ: " + e.message);
                 } finally {
                     appState.isSaving = false;
-                    renderApp();
                 }
             }
         }
@@ -1207,7 +1274,7 @@
                 compressImage(file, (dataUrl) => {
                     currentModalState.image = dataUrl;
                     if (currentModalState.type === 'reply') {
-                        renderReplyModalHTML();
+                        renderReplyModalHTML(false);
                     } else {
                         renderReviewModalHTML(false);
                     }
@@ -1225,7 +1292,7 @@
 
             currentModalState.image = null;
             if (currentModalState.type === 'reply') {
-                renderReplyModalHTML();
+                renderReplyModalHTML(false);
             } else {
                 renderReviewModalHTML(false);
             }
@@ -1253,6 +1320,7 @@
                     rating: currentModalState.rating,
                     review_text: text,
                     review_image_url: currentModalState.image,
+                    is_admin_post: appState.isAdmin
                 };
 
                 const { data, error } = await sb.from('reviews').insert([insertData]).select().single();
@@ -1266,6 +1334,7 @@
                     rating: data.rating,
                     text: data.review_text,
                     image: data.review_image_url,
+                    isAdminPost: data.is_admin_post,
                     date: formatDateThai(data.created_at),
                     reply: null,
                     isHidden: false
@@ -1278,7 +1347,7 @@
                 closeModals();
                 renderApp();
             } catch (e) {
-                alert('เกิดข้อผิดพลาดในการส่งรีวิว: ' + e.message);
+                alert('เกิดข้อผิดพลาดในการส่งรีวิว: (หากเพิ่มไม่ได้ ให้ตรวจสอบว่าตาราง reviews มีคอลัมน์ is_admin_post แล้วหรือยัง)');
                 appState.isSaving = false;
                 renderReviewModalHTML(false);
             }
@@ -1358,7 +1427,7 @@
                 text: review.reply ? review.reply.text : '', 
                 image: review.reply ? review.reply.image : null 
             };
-            renderReplyModalHTML();
+            renderReplyModalHTML(true);
         }
 
         window.submitReply = async function() {
@@ -1370,7 +1439,7 @@
             
             if (reviewIndex > -1) {
                 appState.isSaving = true;
-                renderReplyModalHTML(); 
+                renderReplyModalHTML(false); 
                 
                 try {
                     let updateData = {};
@@ -1401,20 +1470,20 @@
                 } catch (e) {
                     alert("บันทึกตอบกลับไม่สำเร็จ: " + e.message);
                     appState.isSaving = false;
-                    renderReplyModalHTML();
+                    renderReplyModalHTML(false);
                 }
             }
         }
 
-        function renderReplyModalHTML() {
+        function renderReplyModalHTML(animate = true) {
             const { text, image } = currentModalState;
             const textValue = document.getElementById('replyTextInput') ? document.getElementById('replyTextInput').value : text;
 
             let html = `
-                <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm animate-fade-in">
+                <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm ${animate ? 'animate-fade-in' : ''}">
                     <div class="absolute inset-0" onclick="${appState.isSaving ? '' : 'closeModals()'}"></div>
                     
-                    <div class="bg-white w-full max-w-lg mx-auto rounded-[36px] p-7 sm:p-8 shadow-2xl relative animate-slide-up z-10 border border-white">
+                    <div class="bg-white w-full max-w-lg mx-auto rounded-[36px] p-7 sm:p-8 shadow-2xl relative z-10 border border-white ${animate ? 'animate-slide-up' : ''}">
                         <div class="flex justify-between items-center mb-6">
                             <h3 class="font-bold text-gray-800 text-xl flex items-center gap-2">
                                 <i data-lucide="message-circle" width="24" height="24" class="text-pink-500"></i> ตอบกลับรีวิว
@@ -1431,7 +1500,7 @@
                                 ${image ? `
                                 <div class="relative inline-block">
                                     <img src="${escapeHTML(image)}" class="h-20 sm:h-24 rounded-xl border-2 border-white shadow-sm object-cover" />
-                                    <button type="button" onclick="removeModalImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-md hover:bg-red-600" ${appState.isSaving ? 'disabled' : ''}><i data-lucide="x" width="12" height="12"></i></button>
+                                    <button type="button" onclick="removeModalImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-sm hover:bg-red-600" ${appState.isSaving ? 'disabled' : ''}><i data-lucide="x" width="12" height="12"></i></button>
                                 </div>
                                 ` : `
                                 <label class="cursor-pointer text-sm sm:text-base font-semibold text-pink-600 flex items-center gap-2 bg-pink-50 border border-pink-100 px-5 py-3 rounded-xl hover:bg-pink-100 transition-colors ${appState.isSaving ? 'disabled-btn' : ''}">
