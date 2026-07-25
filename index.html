@@ -16,6 +16,9 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <!-- Tailwind Config for Custom Colors -->
     <script>
         tailwind.config = {
@@ -36,6 +39,7 @@
                     animation: {
                         'fade-in': 'fadeIn 0.3s ease-out',
                         'slide-up': 'slideUp 0.4s ease-out',
+                        'spin-slow': 'spin 3s linear infinite',
                     },
                     keyframes: {
                         fadeIn: {
@@ -59,34 +63,21 @@
             color: #5B4B68;
             -webkit-tap-highlight-color: transparent;
             margin: 0;
-            overflow: hidden; /* Prevent body scroll, let app-content scroll */
+            overflow: hidden; 
         }
 
         .bg-soft-purple {
             background: linear-gradient(135deg, #F3E5F5 0%, #E8EAF6 100%);
         }
 
-        /* อนิเมชันไอคอนเด้งเบาๆ อยู่กับที่ (Floating / Gentle Pulse & Bobbing) */
         @keyframes float-pulse {
-            0%, 100% {
-                transform: translateY(0px) scale(1) rotate(0deg);
-                opacity: 0.65;
-            }
-            50% {
-                transform: translateY(-12px) scale(1.12) rotate(8deg);
-                opacity: 0.95;
-            }
+            0%, 100% { transform: translateY(0px) scale(1) rotate(0deg); opacity: 0.65; }
+            50% { transform: translateY(-12px) scale(1.12) rotate(8deg); opacity: 0.95; }
         }
 
         @keyframes float-pulse-reverse {
-            0%, 100% {
-                transform: translateY(0px) scale(1) rotate(0deg);
-                opacity: 0.7;
-            }
-            50% {
-                transform: translateY(10px) scale(0.9) rotate(-10deg);
-                opacity: 0.45;
-            }
+            0%, 100% { transform: translateY(0px) scale(1) rotate(0deg); opacity: 0.7; }
+            50% { transform: translateY(10px) scale(0.9) rotate(-10deg); opacity: 0.45; }
         }
 
         .floating-icon {
@@ -107,7 +98,6 @@
             animation: float-pulse-reverse 5s ease-in-out infinite;
         }
 
-        /* ตำแหน่งของไอคอนแต่ละจุดรอบพื้นหลัง */
         .icon-pos-1 { top: 6%; left: 8%; animation-delay: 0s; }
         .icon-pos-2 { top: 12%; right: 10%; animation-delay: -1.2s; }
         .icon-pos-3 { top: 28%; left: 5%; animation-delay: -2.5s; }
@@ -127,23 +117,17 @@
             box-shadow: 0 8px 32px rgba(200, 180, 220, 0.15);
         }
 
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .disabled-btn { opacity: 0.6; cursor: not-allowed; transform: none !important; }
     </style>
 </head>
 <body class="flex justify-center h-screen w-full">
 
-    <!-- App Container (Full Width & Responsive) -->
     <div class="w-full h-screen bg-soft-purple relative shadow-2xl flex flex-col overflow-hidden animate-fade-in" id="app">
         
-        <!-- Background Floating Icons (ดอกไม้ ดาว วิ้งๆ กระเด้งเบาๆ อยู่กับที่) -->
         <div class="absolute inset-0 pointer-events-none z-0 overflow-hidden">
-            <!-- ดอกไม้ & Sparkles กระจายตามจุด -->
             <div class="floating-icon icon-pos-1"><i data-lucide="flower-2" class="w-9 h-9 sm:w-11 sm:h-11"></i></div>
             <div class="floating-icon-rev icon-pos-2"><i data-lucide="sparkles" class="w-8 h-8 sm:w-10 sm:h-10"></i></div>
             <div class="floating-icon-rev icon-pos-3"><i data-lucide="star" class="w-7 h-7 sm:w-9 sm:h-9 fill-pink-200 text-pink-300"></i></div>
@@ -160,12 +144,32 @@
         </div>
     </div>
 
-    <!-- Modal Root -->
     <div id="modal-root"></div>
 
     <script>
         // ==========================================
-        // 1. STATE & MOCK DATA
+        // 0. SUPABASE INIT & SAFE UTILS
+        // ==========================================
+        const SUPABASE_URL = 'https://myqifdluptxqjizgerhx.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im15cWlmZGx1cHR4cWppemdlcmh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5ODg2MzQsImV4cCI6MjEwMDU2NDYzNH0.5NyH9v69wVnxSZoh4vj7v7JZ5EYxJsXK_d3MjMQFUNM';
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Utility ป้องกัน XSS
+        function escapeHTML(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        }
+
+        // ==========================================
+        // 1. STATE MANAGEMENT
         // ==========================================
         let appState = {
             view: 'customer', 
@@ -176,75 +180,126 @@
             adminFilter: 'all',
             adminPage: 1,
             itemsPerPage: 15,
+            
+            isLoading: true,
+            isSaving: false,
+            errorMsg: '',
+            isAdmin: false,
 
             shopInfo: {
-                name: "องุ่นหวาน ✿ ぶどう",
-                description: "จำหน่ายฟอนต์ลายมือราคาถูก • รับทำป้าย (เปิดรับคิว)\nいらっしゃいませ。 ♡",
-                avatar: "https://images.unsplash.com/photo-1578339572457-3f30907d8a67?w=300&q=80",
-                banner: "https://images.unsplash.com/photo-1618331835717-801e976710b2?w=800&q=80",
+                name: "กำลังโหลด...",
+                description: "",
+                avatar: "",
+                banner: "",
                 showBanner: true,
-                tags: [
-                    "รับดึงเข้ากลุ่ม",
-                    "รับทำป้าย (ปิดรับคิว)"
-                ],
-                socialLinks: [
-                    { id: 1, type: 'facebook', label: 'Facebook', url: 'https://facebook.com' },
-                    { id: 2, type: 'message-circle', label: 'Line Official', url: 'https://line.me' }
-                ]
+                tags: [],
+                socialLinks: []
             },
-            reviews: [
-                {
-                    id: 1,
-                    author: "Nong Mook",
-                    hideName: false,
-                    contactLink: "https://facebook.com/nongmook",
-                    rating: 5,
-                    text: "งานน่ารักมากเลยค่ะ แอดมินตอบไว ใจดีสุดๆ แนะนำร้านนี้เลยค่าา 💖",
-                    image: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=300&q=80",
-                    date: "25 ก.ค. 2569",
-                    reply: {
-                        text: "ขอบคุณสำหรับรีวิวนะคะ ยินดีให้บริการเสมอค่า ✨",
-                        image: null,
-                        date: "25 ก.ค. 2569"
-                    },
-                    isHidden: false
-                },
-                {
-                    id: 2,
-                    author: "CatLover",
-                    hideName: true,
-                    contactLink: "https://ig.me/catlover",
-                    rating: 4,
-                    text: "ดึงเข้ากลุ่มไวมากค่ะ แต่แอบรอนานนิดนึงตอนส่งงาน โดยรวมโอเคค่ะ",
-                    image: null,
-                    date: "20 ก.ค. 2569",
-                    reply: null,
-                    isHidden: false
-                }
-            ]
+            reviews: []
         };
 
-        // Mock data
-        for(let i=3; i<=25; i++) {
-            let randomRating = Math.floor(Math.random() * 5) + 1;
-            appState.reviews.push({
-                id: i,
-                author: "ลูกค้าคนที่ " + i,
-                hideName: Math.random() > 0.5,
-                contactLink: Math.random() > 0.5 ? "line.me/ti/p/customer" + i : "facebook.com/user" + i,
-                rating: randomRating,
-                text: "นี่คือรีวิวทดสอบที่สร้างขึ้นอัตโนมัติ เพื่อทดสอบระบบแบ่งหน้า (หน้าที่ " + Math.ceil(i/15) + ") ให้ดาวทั้งหมด " + randomRating + " ดาวค่ะ",
-                image: null,
-                date: "20 ก.ค. 2569",
-                reply: null,
-                isHidden: false
-            });
+        // ==========================================
+        // 2. DATA FETCHING (SUPABASE)
+        // ==========================================
+        async function fetchInitialData() {
+            appState.isLoading = true;
+            appState.errorMsg = '';
+            renderApp();
+
+            try {
+                // ตรวจสอบ Session & สิทธิ์ Admin
+                const { data: { session } } = await sb.auth.getSession();
+                if (session) {
+                    const { data: isAdminCheck, error: rpcError } = await sb.rpc('is_admin');
+                    if (isAdminCheck === true) {
+                        appState.isAdmin = true;
+                    } else if (appState.view === 'admin' || appState.view === 'login') {
+                        // ถ้าเคยล็อคอินค้างไว้แต่ไม่ใช่แอดมิน ให้เตะออก
+                        await sb.auth.signOut();
+                        appState.isAdmin = false;
+                        appState.view = 'customer';
+                    }
+                } else {
+                    appState.isAdmin = false;
+                    if(appState.view === 'admin') appState.view = 'login';
+                }
+
+                // โหลดข้อมูลร้าน
+                const { data: shopData, error: shopError } = await sb
+                    .from('shop_info')
+                    .select('*')
+                    .eq('id', 1)
+                    .single();
+                
+                if (shopError) throw shopError;
+                
+                if (shopData) {
+                    appState.shopInfo.name = shopData.name;
+                    appState.shopInfo.description = shopData.description;
+                    appState.shopInfo.avatar = shopData.avatar_url || 'https://images.unsplash.com/photo-1578339572457-3f30907d8a67?w=300&q=80';
+                    appState.shopInfo.banner = shopData.banner_url || 'https://images.unsplash.com/photo-1618331835717-801e976710b2?w=800&q=80';
+                    appState.shopInfo.showBanner = shopData.show_banner;
+                    appState.shopInfo.tags = shopData.tags || [];
+                }
+
+                // โหลดช่องทางติดต่อ
+                const { data: socialData, error: socialError } = await sb
+                    .from('shop_social_links')
+                    .select('*')
+                    .order('sort_order', { ascending: true });
+                
+                if (socialError) throw socialError;
+                
+                appState.shopInfo.socialLinks = socialData ? socialData.map(s => ({
+                    id: s.id,
+                    type: s.platform_type,
+                    label: s.label,
+                    url: s.url
+                })) : [];
+
+                // โหลดรีวิว
+                const { data: reviewsData, error: reviewsError } = await sb
+                    .from('reviews')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                
+                if (reviewsError) throw reviewsError;
+                
+                appState.reviews = (reviewsData || []).map(r => ({
+                    id: r.id,
+                    author: r.author,
+                    hideName: r.hide_name,
+                    contactLink: r.contact_link,
+                    rating: r.rating,
+                    text: r.review_text,
+                    image: r.image_url,
+                    date: formatDateThai(r.created_at),
+                    reply: r.reply_text ? {
+                        text: r.reply_text,
+                        image: r.reply_image_url,
+                        date: r.replied_at ? formatDateThai(r.replied_at) : ''
+                    } : null,
+                    isHidden: r.is_hidden
+                }));
+
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                appState.errorMsg = "ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่อีกครั้ง";
+            } finally {
+                appState.isLoading = false;
+                renderApp();
+            }
+        }
+
+        function formatDateThai(isoString) {
+            if(!isoString) return '';
+            const d = new Date(isoString);
+            return `${d.getDate()} ${d.toLocaleString('th-TH', { month: 'short' })} ${d.getFullYear() + 543}`;
         }
 
         // ==========================================
-        // 2. UTILITY FUNCTIONS
+        // 3. UTILITY FUNCTIONS
         // ==========================================
-        
         function compressImage(file, callback) {
             if (!file) return;
             const reader = new FileReader();
@@ -334,9 +389,7 @@
 
         function renderPaginationUI(currentPage, totalPages, viewType) {
             if (totalPages <= 1) return '';
-
             const pages = getPaginationArray(currentPage, totalPages);
-            
             let html = `<div class="flex justify-center items-center gap-1.5 mt-6 mb-4">`;
             
             html += `
@@ -368,9 +421,29 @@
                     <i data-lucide="chevron-right" width="16" height="16"></i>
                 </button>
             `;
-            
             html += `</div>`;
             return html;
+        }
+
+        function renderLoading() {
+            return `
+                <div class="flex flex-col items-center justify-center min-h-[50vh] w-full text-purple-400 gap-4">
+                    <i data-lucide="loader-2" class="w-10 h-10 animate-spin"></i>
+                    <p class="font-medium text-sm">กำลังโหลดข้อมูล...</p>
+                </div>
+            `;
+        }
+        
+        function renderError() {
+            return `
+                <div class="flex flex-col items-center justify-center min-h-[50vh] w-full text-red-400 gap-4 px-6 text-center">
+                    <div class="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center border border-red-100">
+                        <i data-lucide="alert-circle" class="w-8 h-8"></i>
+                    </div>
+                    <p class="font-medium text-gray-700">${escapeHTML(appState.errorMsg)}</p>
+                    <button onclick="fetchInitialData()" class="px-6 py-2 bg-purple-500 text-white rounded-full text-sm hover:bg-purple-600 shadow-md transition-all">ลองใหม่อีกครั้ง</button>
+                </div>
+            `;
         }
 
         function renderApp() {
@@ -384,13 +457,13 @@
                             <div class="p-2 bg-white/90 rounded-full shadow-sm text-purple-500">
                                 <i data-lucide="store" width="18" height="18"></i>
                             </div>
-                            <span class="text-sm font-bold text-purple-800 tracking-wide">${appState.shopInfo.name}</span>
+                            <span class="text-sm font-bold text-purple-800 tracking-wide">${escapeHTML(appState.shopInfo.name)}</span>
                         </div>
                         <div class="flex gap-2">
                             <button onclick="toggleView()" class="p-2 bg-white/90 rounded-full shadow-sm text-gray-400 hover:text-purple-500 hover:scale-105 transition-all">
                                 <i data-lucide="${appState.view === 'customer' ? 'settings' : 'home'}" width="18" height="18"></i>
                             </button>
-                            ${appState.view === 'admin' ? `
+                            ${appState.view === 'admin' && appState.isAdmin ? `
                             <button onclick="logoutAdmin()" class="p-2 bg-red-50 rounded-full shadow-sm text-red-400 hover:text-red-500 hover:scale-105 transition-all">
                                 <i data-lucide="log-out" width="18" height="18"></i>
                             </button>
@@ -402,12 +475,18 @@
 
             html += `<div class="flex-1 overflow-y-auto no-scrollbar w-full pb-10" id="scrollable-content">`;
             
-            if (appState.view === 'customer') {
-                html += renderCustomerView();
-            } else if (appState.view === 'login') {
-                html += renderLoginView();
-            } else if (appState.view === 'admin') {
-                html += renderAdminView();
+            if (appState.isLoading) {
+                html += renderLoading();
+            } else if (appState.errorMsg) {
+                html += renderError();
+            } else {
+                if (appState.view === 'customer') {
+                    html += renderCustomerView();
+                } else if (appState.view === 'login') {
+                    html += renderLoginView();
+                } else if (appState.view === 'admin') {
+                    html += renderAdminView();
+                }
             }
             
             html += `</div>`;
@@ -416,7 +495,7 @@
         }
 
         // ==========================================
-        // 3. VIEW RENDERERS
+        // 4. VIEW RENDERERS
         // ==========================================
 
         function renderCustomerView() {
@@ -438,56 +517,51 @@
             const endIndex = startIndex + itemsPerPage;
             const currentReviews = filteredReviews.slice(startIndex, endIndex);
 
-            const displayTags = shopInfo.tags && shopInfo.tags.length > 0 ? shopInfo.tags : ["รับดึงเข้ากลุ่ม", "รับทำป้าย (ปิดรับคิว)"];
+            const displayTags = shopInfo.tags && shopInfo.tags.length > 0 ? shopInfo.tags : [];
 
             let html = `
                 <div class="animate-fade-in max-w-2xl mx-auto w-full">
-                    <!-- Banner & Avatar -->
                     ${shopInfo.showBanner ? `
                     <div class="relative h-48 sm:h-64 rounded-b-[40px] overflow-hidden shadow-sm bg-gray-100">
-                        <img src="${shopInfo.banner}" alt="Banner" class="w-full h-full object-cover opacity-80" />
+                        <img src="${escapeHTML(shopInfo.banner)}" alt="Banner" class="w-full h-full object-cover opacity-80" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlMmQ0ZjAiLz48L3N2Zz4='"/>
                         <div class="absolute inset-0 bg-gradient-to-t from-white/60 to-transparent"></div>
                     </div>
                     ` : ''}
                     
                     <div class="px-6 ${shopInfo.showBanner ? '-mt-16 sm:-mt-20' : 'mt-8'} relative z-10 flex flex-col items-center text-center transition-all duration-300">
                         <div class="w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-white shadow-md overflow-hidden bg-white mb-4">
-                            <img src="${shopInfo.avatar}" alt="Avatar" class="w-full h-full object-cover" />
+                            <img src="${escapeHTML(shopInfo.avatar)}" alt="Avatar" class="w-full h-full object-cover" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlMmQ0ZjAiLz48L3N2Zz4='"/>
                         </div>
                         
-                        <!-- แท็กโปรไฟล์ที่ดึงตามการตั้งค่าหลังบ้าน (สูงสุด 3 แท็ก) -->
                         <div class="flex flex-wrap justify-center gap-2 mb-3">
                             ${displayTags.map(tag => `
-                                <span class="px-3 py-1 bg-white/90 backdrop-blur-sm text-purple-600 text-[10px] sm:text-xs rounded-full border border-purple-100 font-medium tracking-wide shadow-sm">• ${tag}</span>
+                                <span class="px-3 py-1 bg-white/90 backdrop-blur-sm text-purple-600 text-[10px] sm:text-xs rounded-full border border-purple-100 font-medium tracking-wide shadow-sm">• ${escapeHTML(tag)}</span>
                             `).join('')}
                         </div>
 
-                        <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1 leading-tight">${shopInfo.name}</h1>
-                        <p class="text-gray-500 text-sm sm:text-base whitespace-pre-line leading-relaxed">${shopInfo.description}</p>
+                        <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1 leading-tight">${escapeHTML(shopInfo.name)}</h1>
+                        <p class="text-gray-500 text-sm sm:text-base whitespace-pre-line leading-relaxed">${escapeHTML(shopInfo.description)}</p>
                     </div>
 
-                    <!-- Social Links -->
                     ${shopInfo.socialLinks && shopInfo.socialLinks.length > 0 ? `
                     <div class="px-4 mt-6">
                         <div class="flex flex-wrap justify-center gap-3">
                             ${shopInfo.socialLinks.map(link => `
-                                <a href="${link.url.startsWith('http') ? link.url : 'https://' + link.url}" target="_blank" 
+                                <a href="${escapeHTML(link.url.startsWith('http') ? link.url : 'https://' + link.url)}" target="_blank" rel="noopener noreferrer"
                                    class="flex items-center gap-2 px-4 py-2.5 bg-white/80 hover:bg-white text-purple-600 rounded-2xl border border-purple-100 shadow-sm transition-all text-xs font-semibold hover:scale-105 active:scale-95">
-                                    <i data-lucide="${link.type}" width="16" height="16"></i> ${link.label}
+                                    <i data-lucide="${escapeHTML(link.type)}" width="16" height="16"></i> ${escapeHTML(link.label)}
                                 </a>
                             `).join('')}
                         </div>
                     </div>
                     ` : ''}
 
-                    <!-- Credit Section -->
                     <div class="px-4 mt-10">
                         <div class="flex items-center gap-2 mb-4 pl-2 text-purple-600/70 text-xs sm:text-sm font-bold tracking-widest uppercase">
                             <div class="w-1.5 h-4 sm:h-5 bg-purple-400 rounded-full"></div>
                             Customer Credit
                         </div>
 
-                        <!-- Summary Card -->
                         <div class="glass-card rounded-[32px] p-6 sm:p-8 mb-6">
                             <div class="flex items-center justify-between mb-6">
                                 <div class="text-center w-1/3">
@@ -519,17 +593,14 @@
                             </button>
                         </div>
 
-                        <!-- ตัวกรองตามระดับดาว -->
                         ${renderFilterUI(customerFilter, 'customer')}
 
-                        <!-- Reviews List -->
                         <div class="space-y-4">
                             ${currentReviews.length === 0 ? `
                                 <div class="text-center text-gray-400 py-8 text-sm bg-white/50 rounded-3xl border border-white">ไม่พบรีวิวในหมวดหมู่นี้ค่ะ</div>
                             ` : currentReviews.map(r => renderReviewCard(r, false)).join('')}
                         </div>
 
-                        <!-- Pagination UI -->
                         ${renderPaginationUI(customerPage, totalPages, 'customer')}
                     </div>
                 </div>
@@ -546,24 +617,24 @@
                     
                     <div class="flex justify-between items-start mb-3">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100/80 text-purple-500 rounded-full flex items-center justify-center font-bold text-lg sm:text-xl border border-white shadow-inner shrink-0">
-                                ${displayAuthor.charAt(0)}
+                            <div class="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100/80 text-purple-500 rounded-full flex items-center justify-center font-bold text-lg sm:text-xl border border-white shadow-inner shrink-0 uppercase">
+                                ${escapeHTML(displayAuthor.charAt(0))}
                             </div>
                             <div>
                                 <div class="font-medium text-gray-700 text-sm sm:text-base flex items-center gap-2">
-                                    ${displayAuthor} 
+                                    ${escapeHTML(displayAuthor)} 
                                     ${isAdmin && review.hideName ? `<span class="text-[9px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-md border border-gray-200">(ซ่อนชื่อ)</span>` : ''}
                                 </div>
                                 <div class="flex items-center gap-2 text-[10px] sm:text-xs text-gray-400 mt-0.5">
                                     ${renderStars(review.rating, 10)}
                                     <span>•</span>
-                                    <span>${review.date}</span>
+                                    <span>${escapeHTML(review.date)}</span>
                                 </div>
                                 ${isAdmin && review.contactLink ? `
                                 <div class="mt-1">
-                                    <a href="${review.contactLink.startsWith('http') ? review.contactLink : 'https://' + review.contactLink}" target="_blank" class="inline-flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-600 hover:underline bg-blue-50/50 px-2 py-0.5 rounded-md border border-blue-100/50 w-fit max-w-full">
+                                    <a href="${escapeHTML(review.contactLink.startsWith('http') ? review.contactLink : 'https://' + review.contactLink)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-600 hover:underline bg-blue-50/50 px-2 py-0.5 rounded-md border border-blue-100/50 w-fit max-w-full">
                                         <i data-lucide="external-link" width="10" height="10" class="shrink-0"></i> 
-                                        <span class="truncate">${review.contactLink.length > 25 ? review.contactLink.substring(0, 25) + '...' : review.contactLink}</span>
+                                        <span class="truncate">${escapeHTML(review.contactLink.length > 25 ? review.contactLink.substring(0, 25) + '...' : review.contactLink)}</span>
                                     </a>
                                 </div>
                                 ` : ''}
@@ -572,21 +643,21 @@
                         
                         ${isAdmin ? `
                         <div class="flex gap-1 shrink-0 ml-2">
-                            <button onclick="toggleHideReview(${review.id})" class="p-2 text-gray-400 hover:bg-white/80 hover:text-purple-500 rounded-full transition-colors">
+                            <button onclick="toggleHideReview('${review.id}', ${review.isHidden})" class="p-2 text-gray-400 hover:bg-white/80 hover:text-purple-500 rounded-full transition-colors ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
                                 <i data-lucide="${review.isHidden ? 'eye' : 'eye-off'}" width="16" height="16"></i>
                             </button>
-                            <button onclick="deleteReview(${review.id})" class="p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 rounded-full transition-colors">
+                            <button onclick="deleteReview('${review.id}')" class="p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 rounded-full transition-colors ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
                                 <i data-lucide="trash-2" width="16" height="16"></i>
                             </button>
                         </div>
                         ` : ''}
                     </div>
 
-                    <p class="text-gray-600 text-sm sm:text-base mb-3 leading-relaxed whitespace-pre-line">${review.text}</p>
+                    <p class="text-gray-600 text-sm sm:text-base mb-3 leading-relaxed whitespace-pre-line">${escapeHTML(review.text)}</p>
                     
                     ${review.image ? `
                         <div class="mb-4">
-                            <img src="${review.image}" class="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-[16px] shadow-sm border border-white/50 cursor-pointer" onclick="window.open(this.src)" />
+                            <img src="${escapeHTML(review.image)}" class="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-[16px] shadow-sm border border-white/50 cursor-pointer" onclick="window.open(this.src)" />
                         </div>
                     ` : ''}
 
@@ -601,15 +672,15 @@
                                     <span class="w-4 h-4 bg-pink-200 text-pink-600 rounded-full flex items-center justify-center text-[8px]">✿</span>
                                     Admin Reply
                                 </div>
-                                ${isAdmin ? `<button onclick="openReplyModal(${review.id})" class="text-[10px] sm:text-xs text-gray-400 underline hover:text-pink-500">แก้ไข</button>` : ''}
+                                ${isAdmin ? `<button onclick="openReplyModal('${review.id}')" class="text-[10px] sm:text-xs text-gray-400 underline hover:text-pink-500">แก้ไข</button>` : ''}
                             </div>
-                            <p class="text-gray-600 text-sm sm:text-base mt-1 whitespace-pre-line">${review.reply.text}</p>
+                            <p class="text-gray-600 text-sm sm:text-base mt-1 whitespace-pre-line">${escapeHTML(review.reply.text)}</p>
                             ${review.reply.image ? `
-                                <img src="${review.reply.image}" class="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-xl shadow-sm mt-2 border border-white cursor-pointer" onclick="window.open(this.src)"/>
+                                <img src="${escapeHTML(review.reply.image)}" class="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-xl shadow-sm mt-2 border border-white cursor-pointer" onclick="window.open(this.src)"/>
                             ` : ''}
                         </div>
                     ` : (isAdmin ? `
-                        <button onclick="openReplyModal(${review.id})" class="mt-2 text-xs sm:text-sm text-purple-500 font-medium flex items-center gap-1.5 bg-purple-50/70 hover:bg-purple-100 px-4 py-2 rounded-xl transition-colors border border-purple-100 w-fit">
+                        <button onclick="openReplyModal('${review.id}')" class="mt-2 text-xs sm:text-sm text-purple-500 font-medium flex items-center gap-1.5 bg-purple-50/70 hover:bg-purple-100 px-4 py-2 rounded-xl transition-colors border border-purple-100 w-fit">
                             <i data-lucide="message-circle" width="14" height="14"></i> ตอบกลับรีวิว
                         </button>
                     ` : '')}
@@ -630,25 +701,27 @@
                             <p class="text-sm text-gray-500 mt-1">เข้าสู่ระบบเพื่อจัดการร้านค้า</p>
                         </div>
 
+                        ${appState.errorMsg ? `<div class="mb-4 p-3 bg-red-50 text-red-500 text-sm rounded-xl border border-red-100 text-center">${escapeHTML(appState.errorMsg)}</div>` : ''}
+
                         <form onsubmit="handleLogin(event)" class="space-y-5">
                             <div>
                                 <label class="block text-xs sm:text-sm font-medium text-gray-500 mb-1.5 ml-2">Email</label>
                                 <div class="relative">
                                     <i data-lucide="mail" width="18" height="18" class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                                    <input type="email" id="loginEmail" value="admin@shop.com" required class="w-full pl-11 pr-4 py-3.5 sm:py-4 bg-white/60 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-300 transition-all text-sm sm:text-base" />
+                                    <input type="email" id="loginEmail" required class="w-full pl-11 pr-4 py-3.5 sm:py-4 bg-white/60 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-300 transition-all text-sm sm:text-base" />
                                 </div>
                             </div>
                             <div>
                                 <label class="block text-xs sm:text-sm font-medium text-gray-500 mb-1.5 ml-2">Password</label>
                                 <div class="relative">
                                     <i data-lucide="key" width="18" height="18" class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                                    <input type="password" id="loginPass" value="password" required class="w-full pl-11 pr-4 py-3.5 sm:py-4 bg-white/60 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-300 transition-all text-sm sm:text-base" />
+                                    <input type="password" id="loginPass" required class="w-full pl-11 pr-4 py-3.5 sm:py-4 bg-white/60 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-300 focus:border-purple-300 transition-all text-sm sm:text-base" />
                                 </div>
                             </div>
 
                             <div class="pt-4">
-                                <button type="submit" class="w-full py-4 bg-gradient-to-r from-purple-400 to-pink-400 text-white font-semibold rounded-2xl hover:opacity-90 transition-all shadow-md transform active:scale-[0.98] text-sm sm:text-base">
-                                    เข้าสู่ระบบ
+                                <button type="submit" ${appState.isSaving ? 'disabled' : ''} class="w-full py-4 bg-gradient-to-r from-purple-400 to-pink-400 text-white font-semibold rounded-2xl hover:opacity-90 transition-all shadow-md transform active:scale-[0.98] text-sm sm:text-base ${appState.isSaving ? 'disabled-btn' : ''}">
+                                    ${appState.isSaving ? '<i data-lucide="loader-2" class="inline w-5 h-5 animate-spin"></i> กำลังตรวจสอบ...' : 'เข้าสู่ระบบ'}
                                 </button>
                             </div>
                         </form>
@@ -658,6 +731,7 @@
         }
 
         function renderAdminView() {
+            if (!appState.isAdmin) return `<div class="p-8 text-center text-red-500">Access Denied</div>`;
             const { shopInfo, reviews, adminTab, adminFilter, adminPage, itemsPerPage } = appState;
             
             let html = `
@@ -670,7 +744,6 @@
                         <div class="px-3 py-1.5 bg-pink-100/80 text-pink-600 rounded-full text-xs font-semibold shadow-sm border border-pink-200">Admin</div>
                     </div>
 
-                    <!-- Tabs -->
                     <div class="flex bg-white/60 p-1.5 rounded-[20px] mb-6 backdrop-blur-md border border-white shadow-sm">
                         <button onclick="setAdminTab('reviews')" class="flex-1 py-3 rounded-[16px] text-sm sm:text-base font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${adminTab === 'reviews' ? 'bg-white shadow-sm text-purple-600' : 'text-gray-500 hover:bg-white/40'}">
                             <i data-lucide="message-square" width="16" height="16"></i> จัดการรีวิว
@@ -685,38 +758,35 @@
                 const currentTags = shopInfo.tags || [];
                 html += `
                     <div class="glass-card rounded-[32px] p-6 sm:p-8 space-y-6">
-                        <!-- รูปโปรไฟล์ -->
                         <div>
                             <label class="block text-xs sm:text-sm font-semibold text-gray-600 mb-2 ml-1">รูปโปรไฟล์</label>
                             <div class="flex items-center gap-4">
-                                <img src="${shopInfo.avatar}" class="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-white shadow-md" id="previewAdminAvatar" />
-                                <label class="px-4 py-2 sm:py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100">
+                                <img src="${escapeHTML(shopInfo.avatar)}" class="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-white shadow-md" id="previewAdminAvatar" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlMmQ0ZjAiLz48L3N2Zz4='"/>
+                                <label class="px-4 py-2 sm:py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 ${appState.isSaving ? 'disabled-btn' : ''}">
                                     เปลี่ยนรูป
-                                    <input type="file" class="hidden" accept="image/*" onchange="handleAdminImageUpload(event, 'avatar')" />
+                                    <input type="file" class="hidden" accept="image/*" onchange="handleAdminImageUpload(event, 'avatar')" ${appState.isSaving ? 'disabled' : ''} />
                                 </label>
                             </div>
                         </div>
 
-                        <!-- รูปแบนเนอร์ -->
                         <div>
                             <div class="flex justify-between items-center mb-2">
                                 <label class="block text-xs sm:text-sm font-semibold text-gray-600 ml-1">รูปแบนเนอร์</label>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" class="sr-only peer" ${shopInfo.showBanner ? 'checked' : ''} onchange="toggleBannerDisplay(this.checked)">
+                                <label class="relative inline-flex items-center cursor-pointer ${appState.isSaving ? 'disabled-btn' : ''}">
+                                    <input type="checkbox" class="sr-only peer" ${shopInfo.showBanner ? 'checked' : ''} onchange="toggleBannerDisplay(this.checked)" ${appState.isSaving ? 'disabled' : ''}>
                                     <div class="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
                                     <span class="ml-2 text-xs sm:text-sm font-medium text-gray-500">${shopInfo.showBanner ? 'แสดงหน้าร้าน' : 'ซ่อน'}</span>
                                 </label>
                             </div>
                             <div class="space-y-3 transition-all ${!shopInfo.showBanner ? 'opacity-50 grayscale' : ''}">
-                                <img src="${shopInfo.banner}" class="w-full h-24 sm:h-32 rounded-2xl object-cover border-2 border-white shadow-sm" id="previewAdminBanner" />
-                                <label class="inline-block px-4 py-2 sm:py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100">
+                                <img src="${escapeHTML(shopInfo.banner)}" class="w-full h-24 sm:h-32 rounded-2xl object-cover border-2 border-white shadow-sm" id="previewAdminBanner" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlMmQ0ZjAiLz48L3N2Zz4='"/>
+                                <label class="inline-block px-4 py-2 sm:py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 ${(!shopInfo.showBanner || appState.isSaving) ? 'disabled-btn' : ''}">
                                     เปลี่ยนแบนเนอร์
-                                    <input type="file" class="hidden" accept="image/*" onchange="handleAdminImageUpload(event, 'banner')" ${!shopInfo.showBanner ? 'disabled' : ''} />
+                                    <input type="file" class="hidden" accept="image/*" onchange="handleAdminImageUpload(event, 'banner')" ${(!shopInfo.showBanner || appState.isSaving) ? 'disabled' : ''} />
                                 </label>
                             </div>
                         </div>
 
-                        <!-- จัดการแท็กข้อความใต้รูปโปรไฟล์ (สูงสุด 3 แท็ก) -->
                         <div class="pt-2">
                             <div class="flex justify-between items-center mb-2">
                                 <label class="block text-xs sm:text-sm font-semibold text-gray-600 ml-1">แท็กข้อความใต้รูปโปรไฟล์ (สูงสุด 3 แท็ก)</label>
@@ -725,15 +795,15 @@
                             <div class="space-y-2 mb-3">
                                 ${currentTags.map((tag, idx) => `
                                     <div class="flex items-center gap-2">
-                                        <input type="text" value="${tag}" onchange="updateTag(${idx}, this.value)" placeholder="ข้อความแท็ก..." class="flex-1 px-3.5 py-2.5 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 font-medium">
-                                        <button onclick="deleteTag(${idx})" class="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0">
+                                        <input type="text" value="${escapeHTML(tag)}" onchange="updateTag(${idx}, this.value)" placeholder="ข้อความแท็ก..." class="flex-1 px-3.5 py-2.5 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 font-medium" ${appState.isSaving ? 'disabled' : ''}>
+                                        <button onclick="deleteTag(${idx})" class="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0 ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
                                             <i data-lucide="trash-2" width="16" height="16"></i>
                                         </button>
                                     </div>
                                 `).join('')}
                             </div>
                             ${currentTags.length < 3 ? `
-                                <button onclick="addTag()" class="px-4 py-2 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 flex items-center gap-1.5 w-full sm:w-auto justify-center">
+                                <button onclick="addTag()" class="px-4 py-2 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 flex items-center gap-1.5 w-full sm:w-auto justify-center ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
                                     <i data-lucide="plus" width="14" height="14"></i> เพิ่มแท็ก
                                 </button>
                             ` : `
@@ -743,21 +813,20 @@
 
                         <div>
                             <label class="block text-xs sm:text-sm font-semibold text-gray-600 mb-2 ml-1">ชื่อร้าน</label>
-                            <input type="text" value="${shopInfo.name}" oninput="updateShopInfo('name', this.value)" class="w-full px-4 py-3 sm:py-4 bg-white/70 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm sm:text-base font-medium" />
+                            <input type="text" value="${escapeHTML(shopInfo.name)}" oninput="debouncedUpdateShopInfo('name', this.value)" class="w-full px-4 py-3 sm:py-4 bg-white/70 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm sm:text-base font-medium" ${appState.isSaving ? 'disabled' : ''}/>
                         </div>
                         
                         <div>
                             <label class="block text-xs sm:text-sm font-semibold text-gray-600 mb-2 ml-1">รายละเอียดร้าน</label>
-                            <textarea oninput="updateShopInfo('description', this.value)" class="w-full px-4 py-3 sm:py-4 bg-white/70 border border-gray-200 rounded-2xl h-28 sm:h-32 resize-none focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm sm:text-base leading-relaxed">${shopInfo.description}</textarea>
+                            <textarea oninput="debouncedUpdateShopInfo('description', this.value)" class="w-full px-4 py-3 sm:py-4 bg-white/70 border border-gray-200 rounded-2xl h-28 sm:h-32 resize-none focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm sm:text-base leading-relaxed" ${appState.isSaving ? 'disabled' : ''}>${escapeHTML(shopInfo.description)}</textarea>
                         </div>
                         
-                        <!-- ช่องทางการติดต่อ -->
                         <div class="pt-2">
                             <label class="block text-xs sm:text-sm font-semibold text-gray-600 mb-3 ml-1">ช่องทางการติดต่อ (สำหรับหน้าเว็บ)</label>
                             <div class="space-y-3 mb-4" id="socialLinksContainer">
                                 ${(shopInfo.socialLinks || []).map(link => `
                                     <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-white/40 p-2 rounded-2xl border border-white">
-                                        <select onchange="updateSocialLinkType(${link.id}, this.value)" class="bg-white/70 border border-gray-200 rounded-xl p-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[100px] cursor-pointer">
+                                        <select onchange="updateSocialLink('${link.id}', 'platform_type', this.value)" class="bg-white/70 border border-gray-200 rounded-xl p-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[100px] cursor-pointer" ${appState.isSaving ? 'disabled' : ''}>
                                             <option value="facebook" ${link.type=='facebook'?'selected':''}>Facebook</option>
                                             <option value="instagram" ${link.type=='instagram'?'selected':''}>Instagram</option>
                                             <option value="message-circle" ${link.type=='message-circle'?'selected':''}>Line/Chat</option>
@@ -765,28 +834,27 @@
                                             <option value="youtube" ${link.type=='youtube'?'selected':''}>YouTube</option>
                                             <option value="link" ${link.type=='link'?'selected':''}>Other</option>
                                         </select>
-                                        <input type="text" placeholder="ชื่อปุ่ม (เช่น FB: Mook)" value="${link.label}" onchange="updateSocialLink(${link.id}, 'label', this.value)" class="flex-[1] px-3 py-2 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[100px]">
-                                        <input type="text" placeholder="URL ลิ้งค์..." value="${link.url}" onchange="updateSocialLink(${link.id}, 'url', this.value)" class="flex-[2] px-3 py-2 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[150px]">
-                                        <button onclick="deleteSocialLink(${link.id})" class="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0">
+                                        <input type="text" placeholder="ชื่อปุ่ม" value="${escapeHTML(link.label)}" onchange="updateSocialLink('${link.id}', 'label', this.value)" class="flex-[1] px-3 py-2 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[100px]" ${appState.isSaving ? 'disabled' : ''}>
+                                        <input type="text" placeholder="URL ลิ้งค์..." value="${escapeHTML(link.url)}" onchange="updateSocialLink('${link.id}', 'url', this.value)" class="flex-[2] px-3 py-2 bg-white/70 border border-gray-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-purple-300 min-w-[150px]" ${appState.isSaving ? 'disabled' : ''}>
+                                        <button onclick="deleteSocialLink('${link.id}')" class="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0 ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
                                             <i data-lucide="trash-2" width="16" height="16"></i>
                                         </button>
                                     </div>
                                 `).join('')}
                             </div>
-                            <button onclick="addSocialLink()" class="px-4 py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 flex items-center gap-1.5 w-full sm:w-auto justify-center">
+                            <button onclick="addSocialLink()" class="px-4 py-2.5 bg-purple-50 text-purple-600 rounded-xl text-xs sm:text-sm font-medium cursor-pointer hover:bg-purple-100 transition-colors border border-purple-100 flex items-center gap-1.5 w-full sm:w-auto justify-center ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
                                 <i data-lucide="plus" width="14" height="14"></i> เพิ่มช่องทางติดต่อ
                             </button>
                         </div>
 
                         <div class="pt-4 text-center border-t border-gray-100">
-                            <span class="inline-flex items-center gap-1 text-xs sm:text-sm text-emerald-600 bg-emerald-50 px-4 py-2 rounded-full font-medium border border-emerald-100 shadow-sm">
-                                <i data-lucide="check-circle-2" width="16" height="16"></i> ข้อมูลทั้งหมดบันทึกอัตโนมัติเรียบร้อย
+                            <span class="inline-flex items-center gap-1 text-xs sm:text-sm text-emerald-600 bg-emerald-50 px-4 py-2 rounded-full font-medium border border-emerald-100 shadow-sm transition-opacity ${appState.isSaving ? 'opacity-50' : 'opacity-100'}">
+                                ${appState.isSaving ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> กำลังบันทึก...' : '<i data-lucide="check-circle-2" class="w-4 h-4"></i> ข้อมูลบันทึกอัตโนมัติเรียบร้อย'}
                             </span>
                         </div>
                     </div>
                 `;
             } else {
-
                 let filteredAdminReviews = reviews;
                 if (adminFilter !== 'all') {
                     filteredAdminReviews = filteredAdminReviews.filter(r => r.rating === parseInt(adminFilter));
@@ -810,7 +878,6 @@
                         ` : currentAdminReviews.map(r => renderReviewCard(r, true)).join('')}
                     </div>
 
-                    <!-- Pagination UI สำหรับ Admin -->
                     ${renderPaginationUI(adminPage, totalPages, 'admin')}
                 `;
             }
@@ -821,7 +888,7 @@
 
 
         // ==========================================
-        // 4. ACTIONS & HANDLERS
+        // 5. ACTIONS & HANDLERS
         // ==========================================
 
         function setReviewFilter(filter, viewType) {
@@ -848,28 +915,52 @@
 
         function toggleView() {
             if (appState.view === 'customer') {
-                appState.view = 'login';
+                if(appState.isAdmin) appState.view = 'admin';
+                else appState.view = 'login';
             } else {
                 appState.view = 'customer';
             }
+            appState.errorMsg = '';
             renderApp();
         }
 
-        function handleLogin(e) {
+        async function handleLogin(e) {
             e.preventDefault();
+            if(appState.isSaving) return;
+            
             const email = document.getElementById('loginEmail').value;
             const pass = document.getElementById('loginPass').value;
-            if (email === 'admin@shop.com' && pass === 'password') {
-                appState.view = 'admin';
+            
+            appState.isSaving = true;
+            appState.errorMsg = '';
+            renderApp(); // To show loading state on button
+
+            try {
+                const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+                if (error) throw error;
+                
+                // ตรวจสิทธิ์แอดมินหลังล็อคอินสำเร็จ
+                const { data: isAdmin, error: rpcError } = await sb.rpc('is_admin');
+                if (isAdmin === true) {
+                    appState.isAdmin = true;
+                    appState.view = 'admin';
+                    await fetchInitialData(); // โหลดข้อมูลใหม่เผื่อมีของที่ซ่อนอยู่
+                } else {
+                    await sb.auth.signOut();
+                    throw new Error("บัญชีนี้ไม่มีสิทธิ์เข้าถึงระบบหลังบ้าน");
+                }
+            } catch (error) {
+                appState.errorMsg = error.message || "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+                appState.isSaving = false;
                 renderApp();
-            } else {
-                alert('รหัสผ่านไม่ถูกต้อง (ใช้ admin@shop.com / password)');
             }
         }
 
-        function logoutAdmin() {
+        async function logoutAdmin() {
+            await sb.auth.signOut();
+            appState.isAdmin = false;
             appState.view = 'customer';
-            renderApp();
+            await fetchInitialData(); // โหลดใหม่แบบ public
         }
 
         function setAdminTab(tab) {
@@ -877,110 +968,198 @@
             renderApp();
         }
 
-        function updateShopInfo(key, value) {
+        // --- Database Mutation Functions (Admin) ---
+        let saveTimeout;
+        function debouncedUpdateShopInfo(key, value) {
             appState.shopInfo[key] = value;
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(saveShopInfoToDB, 1000);
+        }
+
+        async function saveShopInfoToDB() {
+            if(!appState.isAdmin) return;
+            appState.isSaving = true;
+            renderApp();
+            
+            try {
+                const info = appState.shopInfo;
+                const { error } = await sb.from('shop_info').update({
+                    name: info.name,
+                    description: info.description,
+                    avatar_url: info.avatar,
+                    banner_url: info.banner,
+                    show_banner: info.showBanner,
+                    tags: info.tags
+                }).eq('id', 1);
+                if (error) throw error;
+            } catch (error) {
+                alert("เกิดข้อผิดพลาดในการบันทึกข้อมูลร้าน: " + error.message);
+            } finally {
+                appState.isSaving = false;
+                renderApp();
+            }
         }
 
         window.toggleBannerDisplay = function(isChecked) {
             appState.shopInfo.showBanner = isChecked;
-            renderApp();
+            saveShopInfoToDB();
         }
 
-        function handleAdminImageUpload(event, key) {
+        window.handleAdminImageUpload = function(event, key) {
             const file = event.target.files[0];
             if (file) {
+                appState.isSaving = true;
+                renderApp();
                 compressImage(file, (dataUrl) => {
                     appState.shopInfo[key] = dataUrl;
-                    if(key === 'avatar') document.getElementById('previewAdminAvatar').src = dataUrl;
-                    if(key === 'banner') document.getElementById('previewAdminBanner').src = dataUrl;
+                    saveShopInfoToDB();
                 });
             }
         }
         
-        // Tags Handlers (เพิ่ม ลบ แก้ไขแท็ก)
         window.addTag = function() {
             if (!appState.shopInfo.tags) appState.shopInfo.tags = [];
             if (appState.shopInfo.tags.length < 3) {
                 appState.shopInfo.tags.push("แท็กใหม่");
-                renderApp();
+                saveShopInfoToDB();
             }
         };
 
         window.updateTag = function(index, value) {
             if (appState.shopInfo.tags && appState.shopInfo.tags[index] !== undefined) {
                 appState.shopInfo.tags[index] = value;
+                saveShopInfoToDB();
             }
         };
 
         window.deleteTag = function(index) {
             if (appState.shopInfo.tags) {
                 appState.shopInfo.tags.splice(index, 1);
+                saveShopInfoToDB();
+            }
+        };
+
+        window.addSocialLink = async function() {
+            if(!appState.isAdmin || appState.isSaving) return;
+            appState.isSaving = true;
+            renderApp();
+            
+            try {
+                const newLink = { platform_type: 'link', label: 'Website', url: '', sort_order: appState.shopInfo.socialLinks.length };
+                const { data, error } = await sb.from('shop_social_links').insert([newLink]).select().single();
+                
+                if (error) throw error;
+                
+                appState.shopInfo.socialLinks.push({
+                    id: data.id,
+                    type: data.platform_type,
+                    label: data.label,
+                    url: data.url
+                });
+            } catch (e) {
+                alert("เพิ่มช่องทางไม่สำเร็จ: " + e.message);
+            } finally {
+                appState.isSaving = false;
                 renderApp();
             }
         };
 
-        // Social Links Handlers
-        window.addSocialLink = function() {
-            if (!appState.shopInfo.socialLinks) appState.shopInfo.socialLinks = [];
-            appState.shopInfo.socialLinks.push({
-                id: Date.now(),
-                type: 'link',
-                label: 'Website',
-                url: ''
-            });
-            renderApp();
-        };
-
-        window.updateSocialLinkType = function(id, value) {
+        window.updateSocialLink = async function(id, field, value) {
+            if(!appState.isAdmin) return;
             const link = appState.shopInfo.socialLinks.find(l => l.id === id);
             if(link) {
-                link.type = value;
+                if(field === 'platform_type') link.type = value;
+                else link[field] = value;
+                
+                appState.isSaving = true;
                 renderApp();
+                try {
+                    const updateData = {};
+                    if(field === 'platform_type') updateData.platform_type = value;
+                    else updateData[field] = value;
+                    
+                    const { error } = await sb.from('shop_social_links').update(updateData).eq('id', id);
+                    if(error) throw error;
+                } catch (e) {
+                    alert("อัปเดตช่องทางไม่สำเร็จ: " + e.message);
+                } finally {
+                    appState.isSaving = false;
+                    renderApp();
+                }
             }
         };
 
-        window.updateSocialLink = function(id, field, value) {
-            const link = appState.shopInfo.socialLinks.find(l => l.id === id);
-            if (link) {
-                link[field] = value;
-            }
-        };
-
-        window.deleteSocialLink = function(id) {
-            if(confirm('ต้องการลบช่องทางการติดต่อนี่หรือไม่?')) {
-                appState.shopInfo.socialLinks = appState.shopInfo.socialLinks.filter(l => l.id !== id);
+        window.deleteSocialLink = async function(id) {
+            if(!appState.isAdmin || appState.isSaving) return;
+            if(confirm('ต้องการลบช่องทางการติดต่อนี้หรือไม่?')) {
+                appState.isSaving = true;
                 renderApp();
+                try {
+                    const { error } = await sb.from('shop_social_links').delete().eq('id', id);
+                    if(error) throw error;
+                    
+                    appState.shopInfo.socialLinks = appState.shopInfo.socialLinks.filter(l => l.id !== id);
+                } catch(e) {
+                    alert("ลบข้อมูลไม่สำเร็จ: " + e.message);
+                } finally {
+                    appState.isSaving = false;
+                    renderApp();
+                }
             }
         };
 
-        window.toggleHideReview = function(id) {
-            const review = appState.reviews.find(r => r.id === id);
-            if(review) {
-                review.isHidden = !review.isHidden;
+        window.toggleHideReview = async function(id, currentHiddenStatus) {
+            if(!appState.isAdmin || appState.isSaving) return;
+            appState.isSaving = true;
+            renderApp();
+            
+            try {
+                const newStatus = !currentHiddenStatus;
+                const { error } = await sb.from('reviews').update({ is_hidden: newStatus }).eq('id', id);
+                if(error) throw error;
+                
+                const review = appState.reviews.find(r => r.id === id);
+                if(review) review.isHidden = newStatus;
+            } catch(e) {
+                alert("เปลี่ยนสถานะไม่สำเร็จ: " + e.message);
+            } finally {
+                appState.isSaving = false;
                 renderApp();
             }
         }
 
-        window.deleteReview = function(id) {
+        window.deleteReview = async function(id) {
+            if(!appState.isAdmin || appState.isSaving) return;
             if(confirm('คุณแน่ใจหรือไม่ที่จะลบรีวิวนี้? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
-                appState.reviews = appState.reviews.filter(r => r.id !== id);
-                
-                const totalFiltered = appState.adminFilter === 'all' 
-                    ? appState.reviews.length 
-                    : appState.reviews.filter(r => r.rating === parseInt(appState.adminFilter)).length;
-                const totalPages = Math.ceil(totalFiltered / appState.itemsPerPage);
-                
-                if (appState.adminPage > totalPages && totalPages > 0) {
-                    appState.adminPage = totalPages;
-                }
-                
+                appState.isSaving = true;
                 renderApp();
+                
+                try {
+                    const { error } = await sb.from('reviews').delete().eq('id', id);
+                    if(error) throw error;
+                    
+                    appState.reviews = appState.reviews.filter(r => r.id !== id);
+                    
+                    const totalFiltered = appState.adminFilter === 'all' 
+                        ? appState.reviews.length 
+                        : appState.reviews.filter(r => r.rating === parseInt(appState.adminFilter)).length;
+                    const totalPages = Math.ceil(totalFiltered / appState.itemsPerPage);
+                    
+                    if (appState.adminPage > totalPages && totalPages > 0) {
+                        appState.adminPage = totalPages;
+                    }
+                } catch(e) {
+                    alert("ลบรีวิวไม่สำเร็จ: " + e.message);
+                } finally {
+                    appState.isSaving = false;
+                    renderApp();
+                }
             }
         }
 
 
         // ==========================================
-        // 5. MODALS (Customer Review & Admin Reply)
+        // 6. MODALS (Customer Review & Admin Reply)
         // ==========================================
 
         let currentModalState = {};
@@ -1044,7 +1223,9 @@
             renderReviewModalHTML(false);
         };
 
-        window.submitReview = function() {
+        window.submitReview = async function() {
+            if(appState.isSaving) return;
+            
             const author = document.getElementById('reviewAuthorInput').value.trim() || "ลูกค้าผู้ไม่ประสงค์ออกนาม";
             const hideName = document.getElementById('reviewHideNameCheck').checked;
             const contactLink = document.getElementById('reviewContactInput').value.trim();
@@ -1053,29 +1234,48 @@
             if(!contactLink) return alert('กรุณาระบุลิ้งค์ช่องทางการติดต่อ (Facebook, Line, IG ฯลฯ) เพื่อยืนยันตัวตนการรีวิวค่ะ');
             if(!text.trim()) return alert('กรุณาพิมพ์ข้อความรีวิวค่ะ');
 
-            const today = new Date();
-            const dateStr = `${today.getDate()} ${today.toLocaleString('th-TH', { month: 'short' })} ${today.getFullYear() + 543}`;
-            
-            const newReview = {
-                id: Date.now(),
-                author: author,
-                hideName: hideName,
-                contactLink: contactLink,
-                rating: currentModalState.rating,
-                text: text,
-                image: currentModalState.image,
-                date: dateStr,
-                reply: null,
-                isHidden: false
-            };
+            appState.isSaving = true;
+            renderReviewModalHTML(false); // Update modal UI to show loading on button
 
-            appState.reviews.unshift(newReview);
-            
-            appState.customerFilter = 'all';
-            appState.customerPage = 1;
-            
-            closeModals();
-            renderApp();
+            try {
+                const insertData = {
+                    author: author,
+                    hide_name: hideName,
+                    contact_link: contactLink,
+                    rating: currentModalState.rating,
+                    review_text: text,
+                    image_url: currentModalState.image,
+                    // RLS prevents users from setting is_hidden to true on insert, but defaults to false in DB
+                };
+
+                const { data, error } = await sb.from('reviews').insert([insertData]).select().single();
+                if (error) throw error;
+                
+                // อัปเดต State
+                const newReview = {
+                    id: data.id,
+                    author: data.author,
+                    hideName: data.hide_name,
+                    contactLink: data.contact_link,
+                    rating: data.rating,
+                    text: data.review_text,
+                    image: data.image_url,
+                    date: formatDateThai(data.created_at),
+                    reply: null,
+                    isHidden: false
+                };
+
+                appState.reviews.unshift(newReview);
+                appState.customerFilter = 'all';
+                appState.customerPage = 1;
+                
+                closeModals();
+                renderApp();
+            } catch (e) {
+                alert('เกิดข้อผิดพลาดในการส่งรีวิว: ' + e.message);
+                appState.isSaving = false;
+                renderReviewModalHTML(false);
+            }
         };
 
         function renderReviewModalHTML(animate = true) {
@@ -1085,7 +1285,7 @@
             let html = `
                 <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm ${animate ? 'animate-fade-in' : ''}">
                     <div class="bg-white/95 backdrop-blur-xl w-full max-w-lg mx-auto rounded-[36px] p-7 sm:p-8 shadow-2xl relative border border-white ${animate ? 'animate-slide-up' : ''} max-h-[90vh] overflow-y-auto no-scrollbar">
-                        <button type="button" onclick="closeModals()" class="absolute top-5 right-5 text-gray-400 hover:bg-gray-100 p-1.5 rounded-full transition-colors">
+                        <button type="button" onclick="closeModals()" class="absolute top-5 right-5 text-gray-400 hover:bg-gray-100 p-1.5 rounded-full transition-colors" ${appState.isSaving ? 'disabled' : ''}>
                             <i data-lucide="x" width="24" height="24"></i>
                         </button>
                         
@@ -1096,46 +1296,45 @@
                         
                         <div class="flex justify-center gap-2 mb-8" id="starContainer">
                             ${[1, 2, 3, 4, 5].map(star => `
-                                <button type="button" onclick="setModalRating(${star})" class="star-btn focus:outline-none transition-transform hover:scale-110 p-1">
+                                <button type="button" onclick="setModalRating(${star})" class="star-btn focus:outline-none transition-transform hover:scale-110 p-1" ${appState.isSaving ? 'disabled' : ''}>
                                     <i data-lucide="star" width="44" height="44" class="${star <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200 fill-gray-200'}"></i>
                                 </button>
                             `).join('')}
                         </div>
 
-                        <!-- ฟอร์มข้อมูลผู้รีวิว -->
                         <div class="space-y-4 mb-6 text-left">
                             <div>
-                                <input type="text" id="reviewAuthorInput" value="${authorName}" placeholder="ชื่อผู้รีวิว" class="w-full bg-gray-50/50 border border-gray-200 rounded-[16px] p-4 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder-gray-400">
+                                <input type="text" id="reviewAuthorInput" value="${escapeHTML(authorName)}" placeholder="ชื่อผู้รีวิว" class="w-full bg-gray-50/50 border border-gray-200 rounded-[16px] p-4 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder-gray-400" ${appState.isSaving ? 'disabled' : ''}>
                                 <label class="flex items-center gap-2 mt-2.5 ml-2 cursor-pointer w-fit">
-                                    <input type="checkbox" id="reviewHideNameCheck" ${hideName ? 'checked' : ''} class="w-5 h-5 text-purple-500 bg-gray-50 border-gray-300 rounded focus:ring-purple-500 accent-purple-500">
+                                    <input type="checkbox" id="reviewHideNameCheck" ${hideName ? 'checked' : ''} class="w-5 h-5 text-purple-500 bg-gray-50 border-gray-300 rounded focus:ring-purple-500 accent-purple-500" ${appState.isSaving ? 'disabled' : ''}>
                                     <span class="text-sm text-gray-500 font-medium">ซ่อนชื่อบางส่วนบนหน้าเว็บ</span>
                                 </label>
                             </div>
                             <div>
-                                <input type="text" id="reviewContactInput" value="${contactLink}" placeholder="* ลิ้งค์ช่องทางการติดต่อ (แอดมินเห็นเท่านั้น)" class="w-full bg-gray-50/50 border border-gray-200 rounded-[16px] p-4 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder-gray-400">
+                                <input type="text" id="reviewContactInput" value="${escapeHTML(contactLink)}" placeholder="* ลิ้งค์ช่องทางการติดต่อ (แอดมินเห็นเท่านั้น)" class="w-full bg-gray-50/50 border border-gray-200 rounded-[16px] p-4 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-purple-300 placeholder-gray-400" ${appState.isSaving ? 'disabled' : ''}>
                                 <p class="text-xs text-red-400/90 mt-2 ml-2 font-medium">* บังคับกรอก เพื่อยืนยันตัวตนและป้องกันการปั่นรีวิว</p>
                             </div>
-                            <textarea id="reviewTextInput" class="w-full bg-gray-50/50 border border-gray-200 rounded-[20px] p-5 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none h-32 placeholder-gray-400" placeholder="ประทับใจบริการตรงไหนบ้างคะ...">${textValue}</textarea>
+                            <textarea id="reviewTextInput" class="w-full bg-gray-50/50 border border-gray-200 rounded-[20px] p-5 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-purple-300 resize-none h-32 placeholder-gray-400" placeholder="ประทับใจบริการตรงไหนบ้างคะ..." ${appState.isSaving ? 'disabled' : ''}>${escapeHTML(textValue)}</textarea>
                         </div>
 
                         ${image ? `
                             <div class="relative mb-6 inline-block">
-                                <img src="${image}" class="h-32 sm:h-40 rounded-2xl border-2 border-white shadow-md object-cover" />
-                                <button type="button" onclick="removeModalImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-md hover:bg-red-600 transition-colors">
+                                <img src="${escapeHTML(image)}" class="h-32 sm:h-40 rounded-2xl border-2 border-white shadow-md object-cover" />
+                                <button type="button" onclick="removeModalImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-md hover:bg-red-600 transition-colors" ${appState.isSaving ? 'disabled' : ''}>
                                     <i data-lucide="x" width="14" height="14"></i>
                                 </button>
                             </div>
                         ` : `
                             <div class="mb-6">
-                                <label class="cursor-pointer text-sm sm:text-base text-purple-600 font-medium flex items-center gap-2 px-5 py-3 bg-purple-50 rounded-2xl hover:bg-purple-100 transition-colors w-fit border border-purple-100">
+                                <label class="cursor-pointer text-sm sm:text-base text-purple-600 font-medium flex items-center gap-2 px-5 py-3 bg-purple-50 rounded-2xl hover:bg-purple-100 transition-colors w-fit border border-purple-100 ${appState.isSaving ? 'disabled-btn' : ''}">
                                     <i data-lucide="camera" width="20" height="20"></i> เพิ่มรูปภาพประกอบ
-                                    <input type="file" accept="image/*" class="hidden" onchange="handleModalImage(event)" />
+                                    <input type="file" accept="image/*" class="hidden" onchange="handleModalImage(event)" ${appState.isSaving ? 'disabled' : ''} />
                                 </label>
                             </div>
                         `}
 
-                        <button type="button" onclick="submitReview()" class="w-full py-4 sm:py-5 bg-gradient-to-r from-purple-400 to-pink-400 text-white font-bold text-lg rounded-2xl hover:opacity-90 transition-all shadow-md active:scale-[0.98]">
-                            ส่งรีวิว
+                        <button type="button" onclick="submitReview()" class="w-full py-4 sm:py-5 bg-gradient-to-r from-purple-400 to-pink-400 text-white font-bold text-lg rounded-2xl hover:opacity-90 transition-all shadow-md active:scale-[0.98] ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
+                            ${appState.isSaving ? '<i data-lucide="loader-2" class="inline w-6 h-6 animate-spin"></i> กำลังส่งรีวิว...' : 'ส่งรีวิว'}
                         </button>
                     </div>
                 </div>
@@ -1155,26 +1354,49 @@
             renderReplyModalHTML();
         }
 
-        window.submitReply = function() {
+        window.submitReply = async function() {
+            if(!appState.isAdmin || appState.isSaving) return;
+            
             const text = document.getElementById('replyTextInput').value;
-            const reviewIndex = appState.reviews.findIndex(r => r.id === currentModalState.reviewId);
+            const reviewId = currentModalState.reviewId;
+            const reviewIndex = appState.reviews.findIndex(r => r.id === reviewId);
             
             if (reviewIndex > -1) {
-                if (!text.trim() && !currentModalState.image) {
-                    appState.reviews[reviewIndex].reply = null;
-                } else {
-                    const today = new Date();
-                    const dateStr = `${today.getDate()} ${today.toLocaleString('th-TH', { month: 'short' })} ${today.getFullYear() + 543}`;
+                appState.isSaving = true;
+                renderReplyModalHTML(); // Show loading on btn
+                
+                try {
+                    let updateData = {};
+                    if (!text.trim() && !currentModalState.image) {
+                        updateData = { reply_text: null, reply_image_url: null, replied_at: null };
+                    } else {
+                        updateData = { 
+                            reply_text: text, 
+                            reply_image_url: currentModalState.image, 
+                            replied_at: new Date().toISOString() 
+                        };
+                    }
                     
-                    appState.reviews[reviewIndex].reply = {
-                        text: text,
-                        image: currentModalState.image,
-                        date: dateStr
-                    };
+                    const { error } = await sb.from('reviews').update(updateData).eq('id', reviewId);
+                    if (error) throw error;
+                    
+                    if (!text.trim() && !currentModalState.image) {
+                        appState.reviews[reviewIndex].reply = null;
+                    } else {
+                        appState.reviews[reviewIndex].reply = {
+                            text: text,
+                            image: currentModalState.image,
+                            date: formatDateThai(updateData.replied_at)
+                        };
+                    }
+                    closeModals();
+                    renderApp();
+                } catch (e) {
+                    alert("บันทึกตอบกลับไม่สำเร็จ: " + e.message);
+                    appState.isSaving = false;
+                    renderReplyModalHTML();
                 }
             }
-            closeModals();
-            renderApp();
         }
 
         function renderReplyModalHTML() {
@@ -1183,36 +1405,36 @@
 
             let html = `
                 <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm animate-fade-in">
-                    <div class="absolute inset-0" onclick="closeModals()"></div>
+                    <div class="absolute inset-0" onclick="${appState.isSaving ? '' : 'closeModals()'}"></div>
                     
                     <div class="bg-white w-full max-w-lg mx-auto rounded-[36px] p-7 sm:p-8 shadow-2xl relative animate-slide-up z-10 border border-white">
                         <div class="flex justify-between items-center mb-6">
                             <h3 class="font-bold text-gray-800 text-xl flex items-center gap-2">
                                 <i data-lucide="message-circle" width="24" height="24" class="text-pink-500"></i> ตอบกลับรีวิว
                             </h3>
-                            <button type="button" onclick="closeModals()" class="p-2 text-gray-400 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors">
+                            <button type="button" onclick="closeModals()" class="p-2 text-gray-400 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors" ${appState.isSaving ? 'disabled' : ''}>
                                 <i data-lucide="x" width="18" height="18"></i>
                             </button>
                         </div>
                         
-                        <textarea id="replyTextInput" class="w-full bg-gray-50 border border-gray-200 rounded-[20px] p-5 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none h-32 mb-5 placeholder-gray-400" placeholder="พิมพ์คำตอบของคุณ...">${textValue}</textarea>
+                        <textarea id="replyTextInput" class="w-full bg-gray-50 border border-gray-200 rounded-[20px] p-5 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-pink-300 resize-none h-32 mb-5 placeholder-gray-400" placeholder="พิมพ์คำตอบของคุณ..." ${appState.isSaving ? 'disabled' : ''}>${escapeHTML(textValue)}</textarea>
 
                         <div class="flex flex-wrap sm:flex-nowrap justify-between items-end gap-4 mb-4">
                             <div>
                                 ${image ? `
                                 <div class="relative inline-block">
-                                    <img src="${image}" class="h-20 sm:h-24 rounded-xl border-2 border-white shadow-sm object-cover" />
-                                    <button type="button" onclick="removeModalImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-sm hover:bg-red-600"><i data-lucide="x" width="12" height="12"></i></button>
+                                    <img src="${escapeHTML(image)}" class="h-20 sm:h-24 rounded-xl border-2 border-white shadow-sm object-cover" />
+                                    <button type="button" onclick="removeModalImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-sm hover:bg-red-600" ${appState.isSaving ? 'disabled' : ''}><i data-lucide="x" width="12" height="12"></i></button>
                                 </div>
                                 ` : `
-                                <label class="cursor-pointer text-sm sm:text-base font-semibold text-pink-600 flex items-center gap-2 bg-pink-50 border border-pink-100 px-5 py-3 rounded-xl hover:bg-pink-100 transition-colors">
+                                <label class="cursor-pointer text-sm sm:text-base font-semibold text-pink-600 flex items-center gap-2 bg-pink-50 border border-pink-100 px-5 py-3 rounded-xl hover:bg-pink-100 transition-colors ${appState.isSaving ? 'disabled-btn' : ''}">
                                     <i data-lucide="camera" width="18" height="18"></i> แนบรูปภาพ
-                                    <input type="file" accept="image/*" class="hidden" onchange="handleModalImage(event)" />
+                                    <input type="file" accept="image/*" class="hidden" onchange="handleModalImage(event)" ${appState.isSaving ? 'disabled' : ''}/>
                                 </label>
                                 `}
                             </div>
-                            <button type="button" onclick="submitReply()" class="w-full sm:w-auto px-8 py-3.5 bg-gray-800 text-white font-medium text-sm sm:text-base rounded-xl hover:bg-gray-700 transition-colors flex items-center justify-center gap-2 shadow-md">
-                                <i data-lucide="send" width="18" height="18"></i> บันทึกการตอบกลับ
+                            <button type="button" onclick="submitReply()" class="w-full sm:w-auto px-8 py-3.5 bg-gray-800 text-white font-medium text-sm sm:text-base rounded-xl hover:bg-gray-700 transition-colors flex items-center justify-center gap-2 shadow-md ${appState.isSaving ? 'disabled-btn' : ''}" ${appState.isSaving ? 'disabled' : ''}>
+                                ${appState.isSaving ? '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> บันทึก...' : '<i data-lucide="send" width="18" height="18"></i> บันทึกการตอบกลับ'}
                             </button>
                         </div>
                         <p class="text-xs text-gray-400 text-center bg-gray-50 py-2 rounded-lg mt-2">หากลบข้อความและรูปภาพออก จะเป็นการลบคำตอบ</p>
@@ -1224,10 +1446,10 @@
         }
 
         // ==========================================
-        // 6. INITIALIZATION
+        // 7. INITIALIZATION
         // ==========================================
         window.onload = function() {
-            renderApp();
+            fetchInitialData(); // Start fetching data on load
         };
     </script>
 </body>
