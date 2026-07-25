@@ -70,6 +70,16 @@
             background: linear-gradient(135deg, #F3E5F5 0%, #E8EAF6 100%);
         }
 
+        /* รองรับรอยบาก/ขอบกล้องมือถือ ป้องกันแถบเมนูด้านบนชิดขอบจอ */
+        .safe-padding-top {
+            padding-top: env(safe-area-inset-top, 12px);
+        }
+        @supports (padding-top: max(env(safe-area-inset-top), 12px)) {
+            .safe-padding-top {
+                padding-top: max(env(safe-area-inset-top), 12px);
+            }
+        }
+
         @keyframes float-pulse {
             0%, 100% { transform: translateY(0px) scale(1) rotate(0deg); opacity: 0.65; }
             50% { transform: translateY(-12px) scale(1.12) rotate(8deg); opacity: 0.95; }
@@ -154,7 +164,6 @@
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im15cWlmZGx1cHR4cWppemdlcmh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5ODg2MzQsImV4cCI6MjEwMDU2NDYzNH0.5NyH9v69wVnxSZoh4vj7v7JZ5EYxJsXK_d3MjMQFUNM';
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Utility ป้องกัน XSS
         function escapeHTML(str) {
             if (!str) return '';
             return String(str).replace(/[&<>'"]/g, 
@@ -199,7 +208,7 @@
         };
 
         // ==========================================
-        // 2. DATA FETCHING (SUPABASE API)
+        // 2. DATA FETCHING
         // ==========================================
         async function fetchInitialData() {
             appState.isLoading = true;
@@ -207,10 +216,9 @@
             renderApp();
 
             try {
-                // ตรวจสอบ Session & สิทธิ์ Admin
                 const { data: { session } } = await sb.auth.getSession();
                 if (session) {
-                    const { data: isAdminCheck, error: rpcError } = await sb.rpc('is_admin');
+                    const { data: isAdminCheck } = await sb.rpc('is_admin');
                     if (isAdminCheck === true) {
                         appState.isAdmin = true;
                     } else if (appState.view === 'admin' || appState.view === 'login') {
@@ -223,9 +231,8 @@
                     if(appState.view === 'admin') appState.view = 'login';
                 }
 
-                // โหลดข้อมูลร้าน (shop_info)
                 const { data: shopData, error: shopError } = await sb.from('shop_info').select('*').eq('id', 1).single();
-                if (shopError && shopError.code !== 'PGRST116') throw shopError; // PGRST116 = No rows found
+                if (shopError && shopError.code !== 'PGRST116') throw shopError; 
                 
                 if (shopData) {
                     appState.shopInfo.name = shopData.name || 'องุ่นหวาน ✿ ぶどう';
@@ -236,7 +243,6 @@
                     appState.shopInfo.tags = shopData.tags || [];
                 }
 
-                // โหลดช่องทางติดต่อ (social_links)
                 const { data: socialData, error: socialError } = await sb.from('social_links').select('*').order('created_at', { ascending: true });
                 if (socialError) throw socialError;
                 
@@ -247,7 +253,6 @@
                     url: s.url
                 })) : [];
 
-                // โหลดรีวิวทั้งหมด (reviews)
                 const { data: reviewsData, error: reviewsError } = await sb.from('reviews').select('*').order('created_at', { ascending: false });
                 if (reviewsError) throw reviewsError;
                 
@@ -431,7 +436,7 @@
             let html = '';
 
             html += `
-                <div class="sticky top-0 z-40 bg-white/60 backdrop-blur-md w-full border-b border-white/50 shadow-sm" style="padding-top: max(env(safe-area-inset-top), 12px);">
+                <div class="sticky top-0 z-40 bg-white/60 backdrop-blur-md w-full border-b border-white/50 shadow-sm safe-padding-top">
                     <div class="max-w-2xl mx-auto w-full px-4 pb-3 flex items-center justify-between">
                         <div class="flex items-center gap-2.5 mt-1">
                             <div class="p-2 bg-white/90 rounded-full shadow-sm text-purple-500">
@@ -457,6 +462,8 @@
             
             if (appState.isLoading) {
                 html += renderLoading();
+            } else if (appState.errorMsg && appState.view !== 'login') {
+                html += renderError();
             } else {
                 if (appState.view === 'customer') {
                     html += renderCustomerView();
@@ -1150,6 +1157,7 @@
 
         function openReviewModal() {
             currentModalState = { 
+                type: 'review',
                 rating: 5, 
                 text: '', 
                 image: null,
@@ -1189,18 +1197,38 @@
         window.handleModalImage = function(event) {
             const file = event.target.files[0];
             if (file) {
-                saveModalInputs();
+                if (currentModalState.type === 'review') saveModalInputs();
+                else if (currentModalState.type === 'reply') {
+                    if (document.getElementById('replyTextInput')) {
+                        currentModalState.text = document.getElementById('replyTextInput').value;
+                    }
+                }
+
                 compressImage(file, (dataUrl) => {
                     currentModalState.image = dataUrl;
-                    renderReviewModalHTML(false);
+                    if (currentModalState.type === 'reply') {
+                        renderReplyModalHTML();
+                    } else {
+                        renderReviewModalHTML(false);
+                    }
                 });
             }
         };
 
         window.removeModalImage = function() {
-            saveModalInputs();
+            if (currentModalState.type === 'review') saveModalInputs();
+            else if (currentModalState.type === 'reply') {
+                if (document.getElementById('replyTextInput')) {
+                    currentModalState.text = document.getElementById('replyTextInput').value;
+                }
+            }
+
             currentModalState.image = null;
-            renderReviewModalHTML(false);
+            if (currentModalState.type === 'reply') {
+                renderReplyModalHTML();
+            } else {
+                renderReviewModalHTML(false);
+            }
         };
 
         window.submitReview = async function() {
@@ -1325,6 +1353,7 @@
         function openReplyModal(reviewId) {
             const review = appState.reviews.find(r => r.id === reviewId);
             currentModalState = { 
+                type: 'reply',
                 reviewId: reviewId, 
                 text: review.reply ? review.reply.text : '', 
                 image: review.reply ? review.reply.image : null 
@@ -1402,7 +1431,7 @@
                                 ${image ? `
                                 <div class="relative inline-block">
                                     <img src="${escapeHTML(image)}" class="h-20 sm:h-24 rounded-xl border-2 border-white shadow-sm object-cover" />
-                                    <button type="button" onclick="removeModalImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-sm hover:bg-red-600" ${appState.isSaving ? 'disabled' : ''}><i data-lucide="x" width="12" height="12"></i></button>
+                                    <button type="button" onclick="removeModalImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-md hover:bg-red-600" ${appState.isSaving ? 'disabled' : ''}><i data-lucide="x" width="12" height="12"></i></button>
                                 </div>
                                 ` : `
                                 <label class="cursor-pointer text-sm sm:text-base font-semibold text-pink-600 flex items-center gap-2 bg-pink-50 border border-pink-100 px-5 py-3 rounded-xl hover:bg-pink-100 transition-colors ${appState.isSaving ? 'disabled-btn' : ''}">
